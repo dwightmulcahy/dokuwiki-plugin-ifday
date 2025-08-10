@@ -92,7 +92,7 @@ class syntax_plugin_ifday extends DokuWiki_Syntax_Plugin {
         }
 
         if ($evalResult) {
-            $R->doc .= $content;
+            $R->doc .= p_render($mode, p_get_instructions($content), $info);
             dbglog("ifday: Condition '$condition' was TRUE. Content will be displayed.");
         } else {
             dbglog("ifday: Condition '$condition' was FALSE. Content will be hidden.");
