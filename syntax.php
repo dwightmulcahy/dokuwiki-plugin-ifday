@@ -14,7 +14,7 @@
  * - Shorthand day-name-only syntax: <ifday monday> == <ifday day is monday>
  * - Configurable option to toggle visible error messages on invalid conditions
  *
- * @license GPL 2 http://www.gnu.org/licenses/gpl-2.0.html
+ * @license GPL 3 http://www.gnu.org/licenses/gpl-3.0.html
  */
 
 if (!defined('DOKU_INC')) die();
