@@ -1,0 +1,7 @@
+base   ifday
+author dWiGhT Mulcahy
+email  dWiGhT.Codes@gmail.com
+date   2025-08-10
+name   IfDay Plugin
+desc   Enables <ifday> syntax for conditional display based on weekday, weekend, day names, with complex logic and parentheses
+url    http://www.github.com/dwightmulcahy/dokuwiki_plugin_ifday
