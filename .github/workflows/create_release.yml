@@ -32,6 +32,8 @@ jobs:
           mkdir -p build
           zip -r build/ifday.zip \
             plugin.info.txt \
+            README.md \
+            LICENSE \
             syntax.php \
             conf/
 
@@ -44,7 +46,7 @@ jobs:
           name: Release ${{ github.ref_name }}
           body_path: build/CHANGELOG.md
           files: |
-            build/pagecss.zip
+            build/ifday.zip
             build/CHANGELOG.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
