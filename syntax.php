@@ -47,31 +47,39 @@ class syntax_plugin_ifday extends DokuWiki_Syntax_Plugin {
     }
 
     /**
-     * Handle matched syntax block, extract condition, and content
+     * Handle matched syntax block, extract condition, and content.
+     * This method is updated to also handle the <else> block.
      * @param string $match Full matched string
      * @param int $state Lexer state
      * @param int $pos Position
      * @param Doku_Handler $handler
-     * @return array Condition string and content string
+     * @return array Condition string, content string for 'if' block, and content string for 'else' block.
      */
     public function handle($match, $state, $pos, Doku_Handler $handler) {
-        if (!preg_match('/^<ifday\s+(.*?)>(.*?)<\/ifday>$/is', $match, $m)) {
-            return ['', ''];
+        // Regex captures three groups: the condition, the 'if' content, and the 'else' content (if it exists).
+        // It uses a non-greedy match for the content to properly handle the first '>', then looks for the <else> tag.
+        if (preg_match('/^<ifday\s+(.*?)>(.*?)<else>(.*?)<\/ifday>$/is', $match, $m)) {
+            // Case with an <else> block
+            return [trim($m[1]), $m[2], $m[3]];
+        } elseif (preg_match('/^<ifday\s+(.*?)>(.*?)<\/ifday>$/is', $match, $m)) {
+            // Original case without an <else> block
+            return [trim($m[1]), $m[2], '']; // Return an empty string for the 'else' content
         }
-        return [trim($m[1]), $m[2]];
+        return ['', '', ''];
     }
 
     /**
-     * Render the content based on the evaluated condition
+     * Render the content based on the evaluated condition, either the 'if'
+     * content or the 'else' content.
      * @param string $mode Render mode, e.g. 'xhtml'
      * @param Doku_Renderer $R Renderer object
-     * @param array $data Array with [condition, content]
+     * @param array $data Array with [condition, content_if, content_else]
      * @return bool True if rendering was handled
      */
     public function render($mode, Doku_Renderer $R, $data) {
         if ($mode !== 'xhtml') return false;
 
-        list($condition, $content) = $data;
+        list($condition, $contentIf, $contentElse) = $data;
 
         $now = new DateTime();
         dbglog("ifday: Starting evaluation for condition '$condition' at " . $now->format('Y-m-d H:i:s'));
@@ -91,15 +99,21 @@ class syntax_plugin_ifday extends DokuWiki_Syntax_Plugin {
             return true;
         }
 
+        // Based on the evaluation result, render the correct content block.
         if ($evalResult) {
-            $R->doc .= p_render($mode, p_get_instructions($content), $info);
-            dbglog("ifday: Condition '$condition' was TRUE. Content will be displayed.");
+            $R->doc .= p_render($mode, p_get_instructions($contentIf), $info);
+            dbglog("ifday: Condition '$condition' was TRUE. 'if' content will be displayed.");
         } else {
-            dbglog("ifday: Condition '$condition' was FALSE. Content will be hidden.");
+            // Check if there is an <else> block.
+            if ($contentElse !== '') {
+                $R->doc .= p_render($mode, p_get_instructions($contentElse), $info);
+                dbglog("ifday: Condition '$condition' was FALSE. 'else' content will be displayed.");
+            } else {
+                dbglog("ifday: Condition '$condition' was FALSE. Content will be hidden.");
+            }
         }
         return true;
     }
-
     /**
      * Evaluate the condition string and return a tuple [success, boolean result, or error message]
      * @param string $cond The condition expression string
