@@ -47,7 +47,7 @@ class syntax_plugin_ifday extends DokuWiki_Syntax_Plugin {
     }
 
     /**
-     * Handle matched syntax block, extract condition and content
+     * Handle matched syntax block, extract condition, and content
      * @param string $match Full matched string
      * @param int $state Lexer state
      * @param int $pos Position
@@ -62,7 +62,7 @@ class syntax_plugin_ifday extends DokuWiki_Syntax_Plugin {
     }
 
     /**
-     * Render the content based on evaluated condition
+     * Render the content based on the evaluated condition
      * @param string $mode Render mode, e.g. 'xhtml'
      * @param Doku_Renderer $R Renderer object
      * @param array $data Array with [condition, content]
@@ -101,7 +101,7 @@ class syntax_plugin_ifday extends DokuWiki_Syntax_Plugin {
     }
 
     /**
-     * Evaluate the condition string and return a tuple [success, boolean result or error message]
+     * Evaluate the condition string and return a tuple [success, boolean result, or error message]
      * @param string $cond The condition expression string
      * @return array [bool success, bool|string result or error message]
      */
@@ -111,13 +111,13 @@ class syntax_plugin_ifday extends DokuWiki_Syntax_Plugin {
         $weekday = !in_array($dayName, ['saturday', 'sunday']);
         $weekend = !$weekday;
 
-        // Normalize whitespace: trim and collapse multiple spaces to single space
+        // Normalize whitespace: trim and collapse multiple spaces to a single space
         $cond = trim(preg_replace('/\s+/', ' ', $cond));
 
         // Remove quotes early for simpler processing
         $cond = str_replace(['"', '\''], '', $cond);
 
-        // --- SHORTHAND: If condition is a single day name or abbreviation, rewrite it as "day == [day]" ---
+        // SHORTHAND: If the condition is a single day name or abbreviation, rewrite it as "day == [day]"
         $days = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
         $dayAbbr = ['mon','tue','wed','thu','fri','sat','sun'];
 
@@ -128,7 +128,7 @@ class syntax_plugin_ifday extends DokuWiki_Syntax_Plugin {
             $cond = 'day == ' . $map[strtolower($cond)];
         }
 
-        // --- Improved day comparison with invalid day name detection ---
+        // Day comparison with invalid day name detection
         $cond = preg_replace_callback(
             '/\bday\s*([!=]=)\s*([a-z]+)\b/i',
             function ($m) use ($dayName, $days, $dayAbbr) {
@@ -198,7 +198,6 @@ class syntax_plugin_ifday extends DokuWiki_Syntax_Plugin {
 
     /**
      * Read plugin config value by key, caching results.
-     * Extend this if your plugin supports config settings.
      * @param string $key Config key
      * @return mixed|null Config value or null if not set
      */

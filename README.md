@@ -64,18 +64,18 @@ Combine conditions with:
 
 - `AND` or `&&` (logical AND)
 - `OR` or `||` (logical OR)
-- `NOT` (logical negation, e.g. `NOT weekday`)
+- `NOT` (logical negation, e.g., `NOT weekday`)
 - Parentheses `(` and `)` to control evaluation order
 
 Examples:
 
 ```dokuwiki
 <ifday NOT weekday>
-Content visible only on weekends.
+Content is visible only on weekends.
 </ifday>
 
 <ifday (weekday AND day != friday) OR weekend>
-Content visible if today is a weekday except Friday, or if it is the weekend.
+Content is visible if today is a weekday except Friday, or if it is the weekend.
 </ifday>
 ```
 
