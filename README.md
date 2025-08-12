@@ -210,4 +210,4 @@ Example error message style:
 ---
 
 ## Support
-For questions or issues, please contact the plugin author or visit the DokuWiki forums.
+For questions or [issues](https://github.com/dwightmulcahy/dokuwiki-plugin-ifday/issues), please contact the plugin author or visit the [DokuWiki forums](https://forum.dokuwiki.org/).
