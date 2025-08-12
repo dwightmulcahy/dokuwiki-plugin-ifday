@@ -9,8 +9,6 @@ jobs:
   build-release:
     runs-on: ubuntu-latest
     env:
-      PLUGIN_NAME: ifday
-      ZIP_NAME: ${{ env.PLUGIN_NAME }}.zip
       INCLUDE_FILES: |
         plugin.info.txt
         README.md
@@ -37,6 +35,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Extract plugin name from repo name
+        id: extract_plugin_name
+        run: |
+          # get repo name only
+          repo="${GITHUB_REPOSITORY##*/}"
+          prefix="dokuwiki-plugin-"
+          if [[ "$repo" == "$prefix"* ]]; then
+            plugin_name="${repo#$prefix}"
+          else
+            plugin_name="$repo"
+          fi
+          echo "PLUGIN_NAME=$plugin_name" >> $GITHUB_ENV
+
       - name: Setup git config
         run: |
           git config --global user.name "GitHub Actions"
@@ -44,8 +55,8 @@ jobs:
 
       - name: Install git-cliff
         run: |
-          curl -sSL https://github.com/orhun/git-cliff/releases/download/v1.3.0/git-cliff-1.3.0-x86_64-unknown-linux-gnu.tar.gz | tar -xz
-          sudo mv git-cliff-1.3.0-x86_64-unknown-linux-gnu/git-cliff /usr/local/bin/
+          curl -sSL https://github.com/orhun/git-cliff/releases/download/v2.10.0/git-cliff-2.10.0-x86_64-unknown-linux-gnu.tar.gz | tar -xz
+          sudo mv git-cliff-2.10.0/git-cliff /usr/local/bin/
 
       - name: Generate CHANGELOG.md from commits
         run: git-cliff -o CHANGELOG.md
@@ -54,7 +65,7 @@ jobs:
         run: |
           mkdir -p build
           # Loop through files and add existing ones to ZIP to avoid failure
-          zip_file="build/${ZIP_NAME}"
+          zip_file="build/${PLUGIN_NAME}.zip"
           rm -f "$zip_file"
           echo "Creating ZIP: $zip_file"
           while IFS= read -r item; do
@@ -74,7 +85,7 @@ jobs:
           name: Release ${{ github.ref_name }}
           body_path: build/CHANGELOG.md
           files: |
-            build/${{ env.ZIP_NAME }}
+            build/${{ env.PLUGIN_NAME }}.zip
             build/CHANGELOG.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
