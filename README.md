@@ -12,6 +12,7 @@ It supports:
 - Special date keywords: `weekday`, `weekend`, and `day` (with specific day names like `monday`, `tuesday`, etc.)
 - Day name abbreviations (`mon`, `tue`, `wed`, etc.) are supported and normalized
 - Boolean checks (e.g., `<ifday weekday>`) without explicit comparisons
+- `<else>` block support 
 - Configurable option to show/hide error messages on the wiki page for invalid conditions
 
 ---
@@ -35,6 +36,38 @@ This content appears only on Mondays.
 
 <ifday Wednesday>
 This content appears only on Wednesdays.
+</ifday>
+```
+
+## `<else>` Block
+
+An optional `<else>` block allows you to specify alternative content to display when the primary condition evaluates to false. This removes the need to use a separate `<ifday not ...>` block for simple `true`/`false` scenarios.
+
+If the condition is `true`, the content within the main `ifday` block is rendered. If the condition is `false`, the content within the `<else>` block is rendered instead. If there is no `<else>` block, and the condition is `false`, no content is displayed.
+
+Using the `<else>` block.
+
+```
+<ifday weekday>
+  The office is open today.
+<else>
+  The office is closed for the weekend.
+</ifday>
+
+<ifday day is "Monday">
+It's the start of the week!
+<else>
+It's not Monday.
+</ifday>
+
+<ifday (day == "Friday" or day == "Saturday")>
+Happy Hour is starting!
+<else>
+It's not time for Happy Hour yet.
+</ifday>
+
+<ifday day is Friday>
+  Enjoy your weekend!
 </ifday>
 ```
 
