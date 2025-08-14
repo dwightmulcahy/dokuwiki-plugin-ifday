@@ -11,7 +11,10 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        php: ["8.2", "8.3", "8.4"]
+        # DokuWiki “Hogfather” release (June 2020), the DokuWiki codebase requires PHP 8.0 or newer
+        # No official support for PHP 8.4 yet, but development builds are being
+        # tested against it.
+        php: ['8.0', '8.1', '8.2', '8.3', '8.4']
 
     steps:
       - name: Checkout repository
