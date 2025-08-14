@@ -36,11 +36,16 @@ jobs:
 
       # Run standalone runner in quiet mode (prints only FAIL lines + summary).
       - name: Run ifday tests (quiet)
+        shell: bash
         env:
-          QUIET: "1"    # only FAIL lines + summary
+          QUIET: "1"   # only FAIL lines + summary
+          COLOR: "1"   # optional: color in logs
         run: |
-          set -e
-          php tests/ifday_tests.php | tee test-output-${{ matrix.php }}.log
+          set -euo pipefail
+          echo "Listing tests dir for sanity:"
+          ls -la tests || true
+          echo "Running tests..."
+          php tests/test_ifday.php |& tee "test-output-${{ matrix.php }}.log"
 
       # If the job fails, upload the full output so it’s easy to debug from the PR.
       - name: Upload test logs on failure
