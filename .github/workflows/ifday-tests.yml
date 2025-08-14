@@ -1,12 +1,7 @@
 name: ifday plugin tests
 
 on:
-  pull_request:
-    paths:
-      - "syntax.php"
-      - "tests/**"
-      - ".github/workflows/ifday-tests.yml"
-  workflow_dispatch:
+  workflow_call: {}   # reusable; runs only when called from PR Check
 
 jobs:
   test:

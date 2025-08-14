@@ -1,0 +1,36 @@
+name: PR Check
+
+on:
+  pull_request:
+    paths:
+      - "syntax.php"
+      - "tests/**"
+      - ".github/workflows/**"
+  workflow_dispatch:
+
+# Prevent overlapping runs for the same PR
+concurrency:
+  group: pr-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+# ====================================
+# Add tests here to preserve ordering
+# ====================================
+
+jobs:
+  # 1) Validate Conventional Commits (child workflow A)
+  conventional-commits:
+    name: Validate Conventional Commits
+    uses: ./.github/workflows/verify_conversional_commits.yml
+    secrets: inherit
+
+  # 2) ifday plugin tests (child workflow B) – runs only after A
+  ifday-tests:
+    name: ifday plugin tests
+    needs: conventional-commits
+    uses: ./.github/workflows/ifday-tests.yml
+    secrets: inherit

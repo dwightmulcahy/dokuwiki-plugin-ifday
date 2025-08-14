@@ -1,8 +1,7 @@
 name: Validate Conventional Commits
 
 on:
-  pull_request:
-    types: [opened, edited, reopened, synchronize]
+  workflow_call: {}   # reusable; runs only when called from PR Check
 
 jobs:
   validate:
@@ -21,6 +20,9 @@ jobs:
             test
             build
             ci
+            improvement
+            build
+            wip
             revert
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
