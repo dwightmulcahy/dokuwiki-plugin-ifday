@@ -114,58 +114,79 @@ class syntax_plugin_ifday extends DokuWiki_Syntax_Plugin {
         }
         return true;
     }
+
     /**
      * Evaluate the condition string and return a tuple [success, boolean result, or error message]
+     * Supports: day comparisons, "is"/"is not", NOT, AND/OR, weekday/weekend, shorthand day names.
+     *
      * @param string $cond The condition expression string
+     * @param string|null $currentDay Optional: day name to override the current date (e.g., 'mon', 'tue')
      * @return array [bool success, bool|string result or error message]
      */
-    private function evaluateCondition($cond) {
-        $now = new DateTime();
-        $dayName = strtolower($now->format('l')); // full day name in lowercase, e.g. "monday"
+    private function evaluateCondition(string $cond, ?string $currentDay = null): array {
+        // Determine the day to use
+        if ($currentDay !== null) {
+            $currentDay = strtolower($currentDay);
+            // Map abbreviation to full name if needed
+            $mapAbbr = [
+                'mon' => 'monday', 'tue' => 'tuesday', 'wed' => 'wednesday',
+                'thu' => 'thursday', 'fri' => 'friday', 'sat' => 'saturday', 'sun' => 'sunday'
+            ];
+            $dayName = $mapAbbr[$currentDay] ?? $currentDay;
+        } else {
+            $now = new DateTime();
+            $dayName = strtolower($now->format('l'));
+        }
+
         $weekday = !in_array($dayName, ['saturday', 'sunday']);
         $weekend = !$weekday;
 
-        // Normalize whitespace: trim and collapse multiple spaces to a single space
+        // Normalize whitespace and remove quotes
         $cond = trim(preg_replace('/\s+/', ' ', $cond));
-
-        // Remove quotes early for simpler processing
         $cond = str_replace(['"', '\''], '', $cond);
 
-        // SHORTHAND: If the condition is a single day name or abbreviation, rewrite it as "day == [day]"
+        // Map shorthand day names to full day names
         $days = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
         $dayAbbr = ['mon','tue','wed','thu','fri','sat','sun'];
+        $mapAbbr = array_combine($dayAbbr, $days);
 
-        if (in_array(strtolower($cond), $days)) {
-            $cond = 'day == ' . strtolower($cond);
-        } elseif (in_array(strtolower($cond), $dayAbbr)) {
-            $map = array_combine($dayAbbr, $days);
-            $cond = 'day == ' . $map[strtolower($cond)];
+        // SHORTHAND: single day names or abbreviations → day == X
+        $lowerCond = strtolower($cond);
+        if (in_array($lowerCond, $days)) {
+            $cond = 'day == ' . $lowerCond;
+        } elseif (isset($mapAbbr[$lowerCond])) {
+            $cond = 'day == ' . $mapAbbr[$lowerCond];
         }
 
-        // Day comparison with invalid day name detection
-        $cond = preg_replace_callback(
-            '/\bday\s*([!=]=)\s*([a-z]+)\b/i',
-            function ($m) use ($dayName, $days, $dayAbbr) {
-                $inputDay = strtolower($m[2]);
-                $map = array_combine($dayAbbr, $days);
+        // Replace "day is X" / "day is not X" with boolean 1/0
+        $cond = preg_replace_callback('/\bday\s+is\s+(not\s+)?([a-z]+)\b/i', function($m) use ($dayName, $mapAbbr, $days) {
+            $negate = !empty($m[1]);
+            $inputDay = strtolower($m[2]);
+            $fullDay = $inputDay;
+            if (isset($mapAbbr[$inputDay])) $fullDay = $mapAbbr[$inputDay];
+            if (!in_array($fullDay, $days)) return '__INVALID_DAY__:' . $inputDay;
+            $result = ($dayName === $fullDay);
+            return ($negate ? !$result : $result) ? '1' : '0';
+        }, $cond);
 
-                // Validate day name or abbreviation
-                if (in_array($inputDay, $days)) {
-                    $fullDay = $inputDay;
-                } elseif (isset($map[$inputDay])) {
-                    $fullDay = $map[$inputDay];
-                } else {
-                    // Invalid day detected — return special token to signal error
-                    return '__INVALID_DAY__:' . $inputDay;
-                }
+        // Replace standalone "is X" / "is not X" for boolean checks
+        $cond = preg_replace_callback('/\bis\s+(not\s+)?(weekday|weekend)\b/i', function($m) use ($weekday, $weekend) {
+            $negate = !empty($m[1]);
+            $value = strtolower($m[2]) === 'weekday' ? $weekday : $weekend;
+            return ($negate ? !$value : $value) ? '1' : '0';
+        }, $cond);
 
-                $isEqual = ($m[1] === '==');
-                return ($isEqual ? $dayName === $fullDay : $dayName !== $fullDay) ? 'true' : 'false';
-            },
-            $cond
-        );
+        // Replace day comparisons "day == X" / "day != X" with 1/0
+        $cond = preg_replace_callback('/\bday\s*([!=]=)\s*([a-z]+)\b/i', function ($m) use ($dayName, $mapAbbr, $days) {
+            $op = $m[1];
+            $inputDay = strtolower($m[2]);
+            if (isset($mapAbbr[$inputDay])) $inputDay = $mapAbbr[$inputDay];
+            if (!in_array($inputDay, $days)) return '__INVALID_DAY__:' . $inputDay;
+            $result = ($op === '==') ? ($dayName === $inputDay) : ($dayName !== $inputDay);
+            return $result ? '1' : '0';
+        }, $cond);
 
-        // Check if invalid day tokens are present after replacement
+        // Detect invalid day tokens
         if (strpos($cond, '__INVALID_DAY__') !== false) {
             preg_match_all('/__INVALID_DAY__:(\w+)/', $cond, $invalidDays);
             $invalidList = implode(', ', $invalidDays[1]);
@@ -174,31 +195,23 @@ class syntax_plugin_ifday extends DokuWiki_Syntax_Plugin {
             return [false, $msg];
         }
 
-        // Replace standalone 'weekday' or 'weekend' (without comparison operators) with true/false
-        $cond = preg_replace('/\bweekday\b(?!\s*[!=]=)/i', $weekday ? 'true' : 'false', $cond);
-        $cond = preg_replace('/\bweekend\b(?!\s*[!=]=)/i', $weekend ? 'true' : 'false', $cond);
-
-        // Replace "is" with "==", only when used as comparison operator
-        $cond = preg_replace('/\bis\b/i', '==', $cond);
+        // Replace remaining standalone 'weekday' or 'weekend' with 1/0
+        $cond = preg_replace('/\bweekday\b/i', $weekday ? '1' : '0', $cond);
+        $cond = preg_replace('/\bweekend\b/i', $weekend ? '1' : '0', $cond);
 
         // Replace logical operators
         $cond = preg_replace('/\bAND\b/i', '&&', $cond);
         $cond = preg_replace('/\bOR\b/i', '||', $cond);
-
-        // Support negation: replace NOT with !
         $cond = preg_replace('/\bNOT\b/i', '!', $cond);
 
-        // Replace boolean strings with 1 and 0 for eval
-        $cond = str_replace(['true', 'false'], ['1', '0'], $cond);
-
-        // Safety check: allow only safe characters to prevent code injection
-        if (!preg_match('/^[\s\(\)0-9<>=!&|]+$/i', $cond)) {
+        // Safety check: only allow numbers, parentheses, and operators
+        if (!preg_match('/^[\s\(\)0-9!<>=&|]+$/', $cond)) {
             $msg = "Safety check failed for processed condition '$cond'";
             dbglog("ifday: $msg");
             return [false, $msg];
         }
 
-        // Evaluate the final condition expression safely
+        // Evaluate safely
         try {
             dbglog("ifday: Final expression for eval is '$cond'");
             $result = eval("return ($cond);");
