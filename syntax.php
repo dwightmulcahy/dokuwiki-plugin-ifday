@@ -20,6 +20,8 @@
 if (!defined('DOKU_INC')) die();
 
 class syntax_plugin_ifday extends DokuWiki_Syntax_Plugin {
+    //** cached plugin configuration */
+    protected ?array $conf = null;
 
     /** @var bool Whether to show errors visibly on the wiki page */
     protected $showErrors = true;
