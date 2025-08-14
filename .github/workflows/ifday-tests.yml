@@ -40,7 +40,7 @@ jobs:
           QUIET: "1"    # only FAIL lines + summary
         run: |
           set -e
-          php tests/run_ifday_tests.php | tee test-output-${{ matrix.php }}.log
+          php tests/ifday_tests.php | tee test-output-${{ matrix.php }}.log
 
       # If the job fails, upload the full output so it’s easy to debug from the PR.
       - name: Upload test logs on failure
