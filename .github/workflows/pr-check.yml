@@ -14,8 +14,9 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: read       # Required so the action can read repo contents if needed
   pull-requests: read
+  statuses: write
 
 # ====================================
 # Add tests here to preserve ordering

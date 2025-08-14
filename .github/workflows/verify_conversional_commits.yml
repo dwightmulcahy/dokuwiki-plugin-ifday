@@ -1,18 +1,31 @@
 name: Validate Conventional Commits
 
 on:
-  workflow_call: {}   # reusable; runs only when called from PR Check
+  workflow_call: {}   # This workflow is reusable and will only run when called by another workflow via "uses:"
+
+permissions:
+  contents: read       # Required so the action can read repo contents if needed
+  pull-requests: read
+  statuses: write
 
 jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: amannn/action-semantic-pull-request@v5
+      # -------------------------------------------------------------------
+      # Run the semantic PR check — now fails immediately if invalid
+      # -------------------------------------------------------------------
+      - name: Validate PR title/body against Conventional Commits
+        uses: amannn/action-semantic-pull-request@v5
+        env:
+          # GitHub automatically provides a GITHUB_TOKEN for each workflow run
+          # The action uses this token to query PR details via the GitHub API
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
+          # ---- Conventional Commit types allowed ----
           types: |
             feat
             fix
-            chore
             docs
             style
             refactor
@@ -20,9 +33,44 @@ jobs:
             test
             build
             ci
-            improvement
-            build
-            wip
+            chore
             revert
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+          # ---- Conventional Commit scopes allowed ----
+          scopes: |
+            core
+            eval
+            syntax
+            render
+            conf
+            tests
+            docs
+            ci
+            build
+            deps
+
+          # Whether a scope is required for all commits/PRs.
+          # false → optional; true → all commits must have a scope
+          requireScope: false
+
+          # Regex pattern for validating the PR subject (title) format.
+          # ^[^\s].+[^\.]$ means:
+          #   - Must not start with whitespace
+          #   - Must contain at least one visible character
+          #   - Must NOT end with a period
+          subjectPattern: '^[^\s].+[^\.]$'
+
+          # Message shown when subjectPattern fails
+          subjectPatternError: >
+            The subject must be imperative, non-empty, and should not end with a period.
+
+          # List of PR labels that will bypass this check
+          # Useful for release PRs or auto-generated PRs
+          ignoreLabels: |
+            skip-semantic-check
+
+          # If true, enforces that a PR with only one commit must still pass validation
+          validateSingleCommit: true
+
+          # If true, PRs marked as "WIP" (work in progress) will fail validation
+          wip: true
