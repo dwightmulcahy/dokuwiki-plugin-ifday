@@ -1,0 +1,182 @@
+name: Verify plugin.info.txt on PR
+
+on:
+  pull_request:
+    paths:
+      - 'plugin.info.txt'
+
+permissions:
+  contents: read
+
+jobs:
+  verify-plugin-info:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Derive plugin name from repo
+        id: plugin
+        run: |
+          repo="${GITHUB_REPOSITORY##*/}"
+          prefix="dokuwiki-plugin-"
+          if [[ "$repo" == "$prefix"* ]]; then
+            plugin_name="${repo#$prefix}"
+          else
+            plugin_name="$repo"
+          fi
+          echo "PLUGIN_NAME=$plugin_name" >> "$GITHUB_ENV"
+          echo "Repo: $repo"
+          echo "Plugin name: $plugin_name"
+
+      - name: Show proposed changes to plugin.info.txt
+        run: |
+          echo "Changes to plugin.info.txt:"
+          git --no-pager diff --color=always origin/${{ github.base_ref }}... -- plugin.info.txt || true
+
+      - name: Validate plugin.info.txt
+        run: |
+          set -euo pipefail
+
+          FILE="plugin.info.txt"
+          if [[ ! -f "$FILE" ]]; then
+            echo "::error title=Missing file::$FILE not found in the PR."
+            exit 1
+          fi
+
+          echo "Checking UTF-8 without BOM..."
+          if head -c 3 "$FILE" | od -An -t x1 | tr -d ' \n' | grep -qi '^efbbbf'; then
+            echo "::error title=BOM detected::$FILE must be UTF-8 without BOM."
+            exit 1
+          fi
+
+          echo "Normalizing line endings check..."
+          if grep -q $'\r' "$FILE"; then
+            echo "::error title=CRLF detected::$FILE contains Windows line endings. Use LF."
+            exit 1
+          fi
+
+          echo "Validating required keys and TAB separation..."
+          REQUIRED_KEYS=(base author email date name desc url)
+          ALLOWED_KEYS=(base author email date name desc url)
+          # Fail if a key uses spaces instead of a TAB
+          for k in "${REQUIRED_KEYS[@]}"; do
+            if grep -q "^${k}[[:space:]][[:space:]]*" "$FILE" && ! grep -q "^${k}\t" "$FILE"; then
+              echo "::error title=Spacing for '${k}'::Key '${k}' must be followed by a single TAB, not spaces."
+              BAD=1
+            fi
+          done
+          [[ "${BAD:-0}" -eq 1 ]] && exit 1
+
+          echo "Parsing file..."
+          # Build key=value map from TAB separated lines that start with a lowercase key
+          awk -F'\t' '
+            /^[a-z]+[ \t]/ {
+              key=$1
+              sub(/[ \t]+$/, "", key)
+              val=$2
+              gsub(/\r$/, "", val)
+              print key"="val
+            }
+          ' "$FILE" > _fields.env
+
+          # Ensure each required key exists exactly once and is TAB separated
+          BAD=0
+          declare -A counts=()
+          while IFS='=' read -r k v; do
+            [[ -z "$k" ]] && continue
+            counts["$k"]=$(( ${counts["$k"]:-0} + 1 ))
+          done < _fields.env
+
+          for k in "${REQUIRED_KEYS[@]}"; do
+            if ! grep -q "^${k}=" _fields.env; then
+              echo "::error title=Missing key::Key '${k}' is required."
+              BAD=1
+            fi
+            if [[ "${counts[$k]:-0}" -ne 1 ]]; then
+              echo "::error title=Duplicate key::Key '${k}' appears ${counts[$k]:-0} times. Each key must appear once."
+              BAD=1
+            fi
+          done
+
+          # Fail if unknown keys appear
+          while IFS='=' read -r k v; do
+            ok=0
+            for a in "${ALLOWED_KEYS[@]}"; do [[ "$k" == "$a" ]] && ok=1; done
+            if [[ $ok -ne 1 ]]; then
+              echo "::error title=Unknown key::Key '${k}' is not allowed. Allowed keys: ${ALLOWED_KEYS[*]}"
+              BAD=1
+            fi
+          done < _fields.env
+
+          [[ $BAD -eq 1 ]] && exit 1
+
+          # Load parsed fields
+          source _fields.env
+
+          echo "Checking base matches plugin folder..."
+          if [[ "$base" != "$PLUGIN_NAME" ]]; then
+            echo "::error title=base mismatch::base='$base' does not match folder '$PLUGIN_NAME'."
+            exit 1
+          fi
+
+          echo "Validating email..."
+          if [[ ! "$email" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$ ]]; then
+            echo "::error title=Invalid email::email='$email' looks invalid."
+            exit 1
+          fi
+
+          echo "Validating date format..."
+          if [[ ! "$date" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+            echo "::error title=Invalid date::date='$date' must be YYYY-MM-DD."
+            exit 1
+          fi
+          # Validate actual calendar date
+          if ! date -d "$date" "+%Y-%m-%d" >/dev/null 2>&1; then
+            echo "::error title=Invalid date::date='$date' is not a real calendar date."
+            exit 1
+          fi
+
+          echo "Validating url..."
+          if [[ ! "$url" =~ ^https:// ]]; then
+            echo "::error title=URL must be HTTPS::url='$url' must start with https://"
+            exit 1
+          fi
+
+          # Basic sanity for name and desc
+          if [[ -z "$name" ]]; then
+            echo "::error title=Missing name::name field is empty."
+            exit 1
+          fi
+          if [[ -z "$desc" ]]; then
+            echo "::error title=Missing desc::desc field is empty."
+            exit 1
+          fi
+
+          echo "Ensuring keys are TAB separated (not spaces)..."
+          for k in "${REQUIRED_KEYS[@]}"; do
+            if ! grep -q "^${k}\t" "$FILE"; then
+              echo "::error title=Tab required::Key '${k}' must be followed by a TAB."
+              BAD=1
+            fi
+          done
+          [[ $BAD -eq 1 ]] && exit 1
+
+          echo "All checks passed for plugin.info.txt"
+
+      - name: Summary
+        if: ${{ success() }}
+        run: |
+          {
+            echo "### plugin.info.txt checks passed ✅"
+            echo ""
+            echo "- All required keys exist once"
+            echo "- Tabs used between key and value"
+            echo "- UTF-8 without BOM"
+            echo "- base matches '${PLUGIN_NAME}'"
+            echo "- Date is valid YYYY-MM-DD"
+            echo "- URL uses https"
+          } >> "$GITHUB_STEP_SUMMARY"
