@@ -1,4 +1,4 @@
-name: Verify plugin.info.txt (PR)
+name: Verify plugin.info.txt
 
 on:
   pull_request:
