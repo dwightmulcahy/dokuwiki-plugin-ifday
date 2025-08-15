@@ -67,18 +67,23 @@ jobs:
       - name: Generate CHANGELOG.md from commits
         run: git-cliff --config cliff.toml -o CHANGELOG.md
 
-      - name: Update plugin date in plugin.info.txt
+      - name: Update plugin date in plugin.info.txt with a real tab
         run: |
+          set -euo pipefail
           today=$(TZ=America/Chicago date +'%Y-%m-%d')
 
-          if grep -q "^date" plugin.info.txt; then
-            sed -i "s/^date[[:space:]]\+[0-9-]\+/date   ${today}/" plugin.info.txt
-          else
-            echo "date   ${today}" >> plugin.info.txt
-          fi
+          # Normalize only the 'date' line to: "date<TAB>YYYY-MM-DD"
+          awk -v today="$today" 'BEGIN{FS="[ \t]+"; OFS="\t"}
+            /^date[ \t]/ { print "date", today; next }
+            { print }
+          ' plugin.info.txt > plugin.info.txt.tmp
+
+          # Ensure UTF-8 without BOM
+          iconv -f UTF-8 -t UTF-8 -o plugin.info.txt plugin.info.txt.tmp
+          rm -f plugin.info.txt.tmp
 
           echo "Updated plugin date to ${today}"
-          cat plugin.info.txt
+          printf '--- plugin.info.txt ---\n'; cat -A plugin.info.txt
 
           # Commit only if there are changes
           if ! git diff --quiet plugin.info.txt; then
@@ -89,16 +94,22 @@ jobs:
             echo "No changes to commit"
           fi
 
-      - name: Create plugin zip
+      - name: Build release ZIP with correct top-level folder
         run: |
           set -euo pipefail
           shopt -s nullglob
-          mkdir -p build
-          zip_file="build/${PLUGIN_NAME}.zip"
-          rm -f "$zip_file"
-          echo "Creating ZIP: $zip_file"
 
-          # iterate each line from INCLUDE_FILES, expand globs, add if present
+          VERSION="${GITHUB_REF_NAME#v}"  # tag v1.2.3 -> 1.2.3
+          STAGE="build/stage"
+          OUTDIR="build"
+          mkdir -p "$STAGE" "$OUTDIR"
+
+          # Stage under PLUGIN_NAME/ so the zip root is correct
+          DEST="$STAGE/${PLUGIN_NAME}"
+          rm -rf "$DEST"
+          mkdir -p "$DEST"
+
+          # Add included files and directories if present
           while IFS= read -r item; do
             [[ -z "$item" ]] && continue
             found=0
@@ -106,7 +117,7 @@ jobs:
               if [[ -e "$path" ]]; then
                 found=1
                 echo "Adding $path"
-                zip -r -q "$zip_file" "$path"
+                rsync -a "$path" "$DEST"/
               fi
             done
             if [[ $found -eq 0 ]]; then
@@ -114,7 +125,15 @@ jobs:
             fi
           done <<< "${INCLUDE_FILES}"
 
-          cp CHANGELOG.md build/
+          # Create versioned zip
+          ZIP_FILE="${OUTDIR}/${PLUGIN_NAME}-${VERSION}.zip"
+          rm -f "$ZIP_FILE"
+          (cd "$STAGE" && zip -r -q "../${PLUGIN_NAME}-${VERSION}.zip" "${PLUGIN_NAME}")
+
+          # Copy changelog alongside
+          cp CHANGELOG.md "$OUTDIR"/
+
+          echo "Created $ZIP_FILE"
 
       - name: Create GitHub Release and upload assets
         uses: softprops/action-gh-release@v2
@@ -123,7 +142,7 @@ jobs:
           name: Release ${{ github.ref_name }}
           body_path: build/CHANGELOG.md
           files: |
-            build/${{ env.PLUGIN_NAME }}.zip
+            build/${{ env.PLUGIN_NAME }}-${{ github.ref_name || 'v0.0.0' }}.zip
             build/CHANGELOG.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
