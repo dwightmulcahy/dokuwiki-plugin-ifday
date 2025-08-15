@@ -5,9 +5,13 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
 jobs:
   build-release:
     runs-on: ubuntu-latest
+
     env:
       INCLUDE_FILES: |
         plugin.info.txt
@@ -34,11 +38,12 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Extract plugin name from repo name
         id: extract_plugin_name
         run: |
-          # get repo name only
           repo="${GITHUB_REPOSITORY##*/}"
           prefix="dokuwiki-plugin-"
           if [[ "$repo" == "$prefix"* ]]; then
@@ -46,7 +51,7 @@ jobs:
           else
             plugin_name="$repo"
           fi
-          echo "PLUGIN_NAME=$plugin_name" >> $GITHUB_ENV
+          echo "PLUGIN_NAME=$plugin_name" >> "$GITHUB_ENV"
 
       - name: Setup git config
         run: |
@@ -56,26 +61,59 @@ jobs:
       - name: Install git-cliff
         run: |
           curl -sSL https://github.com/orhun/git-cliff/releases/download/v2.10.0/git-cliff-2.10.0-x86_64-unknown-linux-gnu.tar.gz | tar -xz
-          sudo mv git-cliff-2.10.0/git-cliff /usr/local/bin/
+          sudo mv git-cliff-2.10.0/git-cliff /usr/local/bin/git-cliff
+          git-cliff --version
 
       - name: Generate CHANGELOG.md from commits
-        run: git-cliff -o CHANGELOG.md
+        run: git-cliff --config cliff.toml -o CHANGELOG.md
+
+      - name: Update plugin date in plugin.info.txt
+        run: |
+          today=$(TZ=America/Chicago date +'%Y-%m-%d')
+
+          if grep -q "^date" plugin.info.txt; then
+            sed -i "s/^date[[:space:]]\+[0-9-]\+/date   ${today}/" plugin.info.txt
+          else
+            echo "date   ${today}" >> plugin.info.txt
+          fi
+
+          echo "Updated plugin date to ${today}"
+          cat plugin.info.txt
+
+          # Commit only if there are changes
+          if ! git diff --quiet plugin.info.txt; then
+            git add plugin.info.txt
+            git commit -m "chore: update plugin.info.txt date to ${today}"
+            git push
+          else
+            echo "No changes to commit"
+          fi
 
       - name: Create plugin zip
         run: |
+          set -euo pipefail
+          shopt -s nullglob
           mkdir -p build
-          # Loop through files and add existing ones to ZIP to avoid failure
           zip_file="build/${PLUGIN_NAME}.zip"
           rm -f "$zip_file"
           echo "Creating ZIP: $zip_file"
+
+          # iterate each line from INCLUDE_FILES, expand globs, add if present
           while IFS= read -r item; do
-            if [ -e "$item" ]; then
-              echo "Adding $item"
-              zip -r -q "$zip_file" "$item"
-            else
+            [[ -z "$item" ]] && continue
+            found=0
+            for path in $item; do
+              if [[ -e "$path" ]]; then
+                found=1
+                echo "Adding $path"
+                zip -r -q "$zip_file" "$path"
+              fi
+            done
+            if [[ $found -eq 0 ]]; then
               echo "Skipping missing $item"
             fi
           done <<< "${INCLUDE_FILES}"
+
           cp CHANGELOG.md build/
 
       - name: Create GitHub Release and upload assets
