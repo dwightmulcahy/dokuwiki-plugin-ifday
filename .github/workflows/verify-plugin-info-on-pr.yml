@@ -1,47 +1,26 @@
-name: Verify plugin.info.txt on PR
+name: verify-plugin-info
 
 on:
   pull_request:
     paths:
       - 'plugin.info.txt'
 
-permissions:
-  contents: read
-
 jobs:
-  verify-plugin-info:
+  verify:
     runs-on: ubuntu-latest
-
+    env:
+      PLUGIN_NAME: ifday
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      - uses: actions/checkout@v4
 
-      - name: Derive plugin name from repo
-        id: plugin
-        run: |
-          repo="${GITHUB_REPOSITORY##*/}"
-          prefix="dokuwiki-plugin-"
-          if [[ "$repo" == "$prefix"* ]]; then
-            plugin_name="${repo#$prefix}"
-          else
-            plugin_name="$repo"
-          fi
-          echo "PLUGIN_NAME=$plugin_name" >> "$GITHUB_ENV"
-          echo "Repo: $repo"
-          echo "Plugin name: $plugin_name"
-
-      - name: Show proposed changes to plugin.info.txt
-        run: |
-          echo "Changes to plugin.info.txt:"
-          git --no-pager diff --color=always origin/${{ github.base_ref }}... -- plugin.info.txt || true
-
-      - name: Validate plugin.info.txt
+      - name: Verify plugin.info.txt
+        shell: bash
         run: |
           set -euo pipefail
 
           FILE="plugin.info.txt"
+          TAB=$'\t'
+
           if [[ ! -f "$FILE" ]]; then
             echo "::error title=Missing file::$FILE not found in the PR."
             exit 1
@@ -62,17 +41,18 @@ jobs:
           echo "Validating required keys and TAB separation..."
           REQUIRED_KEYS=(base author email date name desc url)
           ALLOWED_KEYS=(base author email date name desc url)
+
+          BAD=0
           # Fail if a key uses spaces instead of a TAB
           for k in "${REQUIRED_KEYS[@]}"; do
-            if grep -q "^${k}[[:space:]][[:space:]]*" "$FILE" && ! grep -q "^${k}\t" "$FILE"; then
+            if grep -q "^${k}[[:space:]]" "$FILE" && ! grep -q "^${k}${TAB}" "$FILE"; then
               echo "::error title=Spacing for '${k}'::Key '${k}' must be followed by a single TAB, not spaces."
               BAD=1
             fi
           done
-          [[ "${BAD:-0}" -eq 1 ]] && exit 1
+          [[ $BAD -eq 1 ]] && exit 1
 
           echo "Parsing file..."
-          # Build key=value map from TAB separated lines that start with a lowercase key
           awk -F'\t' '
             /^[a-z]+[ \t]/ {
               key=$1
@@ -83,8 +63,7 @@ jobs:
             }
           ' "$FILE" > _fields.env
 
-          # Ensure each required key exists exactly once and is TAB separated
-          BAD=0
+          # Ensure each required key exists exactly once
           declare -A counts=()
           while IFS='=' read -r k v; do
             [[ -z "$k" ]] && continue
@@ -111,10 +90,8 @@ jobs:
               BAD=1
             fi
           done < _fields.env
-
           [[ $BAD -eq 1 ]] && exit 1
 
-          # Load parsed fields
           source _fields.env
 
           echo "Checking base matches plugin folder..."
@@ -134,7 +111,6 @@ jobs:
             echo "::error title=Invalid date::date='$date' must be YYYY-MM-DD."
             exit 1
           fi
-          # Validate actual calendar date
           if ! date -d "$date" "+%Y-%m-%d" >/dev/null 2>&1; then
             echo "::error title=Invalid date::date='$date' is not a real calendar date."
             exit 1
@@ -146,7 +122,6 @@ jobs:
             exit 1
           fi
 
-          # Basic sanity for name and desc
           if [[ -z "$name" ]]; then
             echo "::error title=Missing name::name field is empty."
             exit 1
@@ -157,8 +132,9 @@ jobs:
           fi
 
           echo "Ensuring keys are TAB separated (not spaces)..."
+          BAD=0
           for k in "${REQUIRED_KEYS[@]}"; do
-            if ! grep -q "^${k}\t" "$FILE"; then
+            if ! grep -q "^${k}${TAB}" "$FILE"; then
               echo "::error title=Tab required::Key '${k}' must be followed by a TAB."
               BAD=1
             fi
@@ -166,17 +142,3 @@ jobs:
           [[ $BAD -eq 1 ]] && exit 1
 
           echo "All checks passed for plugin.info.txt"
-
-      - name: Summary
-        if: ${{ success() }}
-        run: |
-          {
-            echo "### plugin.info.txt checks passed ✅"
-            echo ""
-            echo "- All required keys exist once"
-            echo "- Tabs used between key and value"
-            echo "- UTF-8 without BOM"
-            echo "- base matches '${PLUGIN_NAME}'"
-            echo "- Date is valid YYYY-MM-DD"
-            echo "- URL uses https"
-          } >> "$GITHUB_STEP_SUMMARY"
