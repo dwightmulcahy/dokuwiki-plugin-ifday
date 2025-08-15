@@ -1,4 +1,4 @@
-name: Verify plugin.info.txt (PR)
+name: Verify plugin.info.txt
 
 on:
   pull_request:
@@ -22,59 +22,67 @@ jobs:
 
       - name: Derive PLUGIN_NAME from repo
         id: derive_name
+        shell: bash
         run: |
+          set -euo pipefail
           repo="${GITHUB_REPOSITORY##*/}"              # e.g. dokuwiki-plugin-ifday
           name="${repo#dokuwiki-plugin-}"              # -> ifday
-          echo "PLUGIN_NAME=$name" | tee -a "$GITHUB_ENV"
+          echo "PLUGIN_NAME=$name" >> "$GITHUB_ENV"
           echo "Derived PLUGIN_NAME=$name"
 
       - name: Ensure file exists
+        shell: bash
         run: |
-          if [[ ! -f "$FILE" ]]; then
-            echo "::error title=Missing file::$FILE not found in the PR."
+          set -euo pipefail
+          [[ -f "$FILE" ]] || { echo "::error title=Missing file::$FILE not found in the PR."; exit 1; }
+
+      - name: Quick encoding and line endings
+        shell: bash
+        run: |
+          set -euo pipefail
+          # No UTF-8 BOM
+          if head -c 3 "$FILE" | od -An -t x1 | tr -d ' \n' | grep -qi '^efbbbf'; then
+            echo "::error title=BOM detected::$FILE must be UTF-8 without BOM."
+            exit 1
+          fi
+          # No CRLF
+          if grep -q $'\r' "$FILE"; then
+            echo "::error title=CRLF detected::$FILE contains Windows line endings. Use LF."
             exit 1
           fi
 
-      - name: Auto-fix key spacing (spaces → single TAB)
+      - name: Auto-fix key spacing to a single TAB (no literal tabs in YAML)
+        shell: bash
         run: |
-          sed -i 's/^\([a-z]\+\) \+/\1\t/' "$FILE"
+          set -euo pipefail
+          TAB=$'\t'
+          # Collapse any spaces/tabs after a lowercase key to exactly one TAB
+          # Example: "date   2025-08-14" -> "date<TAB>2025-08-14"
+          perl -0777 -pe 's/^([a-z]+)[ \t]+/\1\t/mg' -i "$FILE"
 
       - name: Commit auto-fix if changed (same-repo PRs only)
-        if: ${{ github.event.pull_request.head.repo.full_name == github.repository && !cancelled() }}
+        if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+        shell: bash
         run: |
+          set -euo pipefail
           if ! git diff --quiet -- "$FILE"; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add "$FILE"
-            git commit -m "fix(plugin.info.txt): replace spaces with a single tab after keys"
+            git commit -m "fix(plugin.info.txt): normalize whitespace to a single tab after keys"
             git push
           fi
 
       - name: Validate plugin.info.txt
+        shell: bash
         run: |
           set -euo pipefail
 
           is_valid_date() {
             local d="$1"
             [[ "$d" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || return 1
-            if date -d "$d" "+%Y-%m-%d" >/dev/null 2>&1; then
-              return 0
-            fi
-            if date -j -f "%Y-%m-%d" "$d" "+%Y-%m-%d" >/dev/null 2>&1; then
-              return 0
-            fi
-            if command -v python3 >/dev/null 2>&1 && python3 - <<PY
-import sys, datetime
-try:
-  datetime.date.fromisoformat("$d")
-  sys.exit(0)
-except Exception:
-  sys.exit(1)
-            PY
-            then return 0; fi
-              return $?
-            fi
-            return 1
+            # GNU date is available on ubuntu-latest
+            LC_ALL=C date -d "$d" "+%Y-%m-%d" >/dev/null 2>&1
           }
 
           REQUIRED_KEYS=(base author email date name desc url)
@@ -82,20 +90,19 @@ except Exception:
           BAD=0
 
           declare -A counts F
-          while IFS=$'\037' read -r k v; do
-            [[ -z "$k" ]] && continue
-            counts["$k"]=$(( ${counts["$k"]:-0} + 1 ))
-            F["$k"]="$v"
-          done < <(awk '
-            BEGIN{FS="\t"}
-            /^[a-z]+[ \t]/ {
-              key=$1
-              sub(/[ \t]+$/, "", key)
-              val=$2
-              sub(/\r$/, "", val)
-              printf "%s\037%s\n", key, val
-            }
-          ' "$FILE")
+
+          while IFS= read -r line; do
+            [[ "$line" =~ ^[a-z]+[[:space:]] ]] || continue
+            # Expect exactly one tab after normalization
+            if [[ "$line" == *$'\t'* ]]; then
+              key="${line%%$'\t'*}"
+              val="${line#*$'\t'}"
+              # Trim trailing CR if any
+              val="${val%$'\r'}"
+              counts["$key"]=$(( ${counts["$key"]:-0} + 1 ))
+              F["$key"]="$val"
+            fi
+          done < "$FILE"
 
           for k in "${REQUIRED_KEYS[@]}"; do
             if [[ -z "${counts[$k]:-}" ]]; then
@@ -111,7 +118,7 @@ except Exception:
             ok=0
             for a in "${ALLOWED_KEYS[@]}"; do [[ "$k" == "$a" ]] && ok=1; done
             if [[ $ok -ne 1 ]]; then
-              echo "::error title=Unknown key::Key '${k}' is not allowed."
+              echo "::error title=Unknown key::Key '${k}' is not allowed. Allowed keys: ${ALLOWED_KEYS[*]}"
               BAD=1
             fi
           done
@@ -127,22 +134,18 @@ except Exception:
             echo "::error title=base mismatch::base='$basev' does not match folder '$PLUGIN_NAME'."
             BAD=1
           fi
-
           if [[ ! "$email" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$ ]]; then
             echo "::error title=Invalid email::email='$email' looks invalid."
             BAD=1
           fi
-
           if ! is_valid_date "$datev"; then
             echo "::error title=Invalid date::date='$datev' must be valid YYYY-MM-DD."
             BAD=1
           fi
-
           if [[ ! "$url" =~ ^https:// ]]; then
             echo "::error title=URL must be HTTPS::url='$url' must start with https://"
             BAD=1
           fi
-
           if [[ -z "$namev" ]]; then
             echo "::error title=Missing name::name field is empty."
             BAD=1
@@ -152,13 +155,11 @@ except Exception:
             BAD=1
           fi
 
+          # Enforce literal TAB after each required key
           for k in "${REQUIRED_KEYS[@]}"; do
-            if ! grep -q "^${k}"$'\t' "$FILE"; then
-              echo "::error title=Tab required::Key '${k}' must be followed by a TAB."
-              BAD=1
-            fi
+            grep -q "^${k}"$'\t' "$FILE" || { echo "::error title=Tab required::Key '${k}' must be followed by a TAB."; BAD=1; }
           done
 
           echo "::notice title=Parsed fields::base='${F[base]:-}', author='${F[author]:-}', email='${F[email]:-}', date='${F[date]:-}', name='${F[name]:-}', url='${F[url]:-}'"
 
-          [[ $BAD -eq 1 ]] && exit 1
+          exit "$BAD"
