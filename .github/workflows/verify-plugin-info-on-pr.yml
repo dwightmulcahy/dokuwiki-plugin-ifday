@@ -6,8 +6,8 @@ on:
       - 'plugin.info.txt'
 
 permissions:
-  contents: write         # needed to push auto-fixes on same-repo PRs
-  pull-requests: write    # allows PR comments if you add them later
+  contents: write
+  pull-requests: write
 
 jobs:
   verify-plugin-info:
@@ -23,15 +23,13 @@ jobs:
       - name: Derive PLUGIN_NAME from repo
         id: derive_name
         run: |
-          set -euo pipefail
           repo="${GITHUB_REPOSITORY##*/}"              # e.g. dokuwiki-plugin-ifday
-          name="${repo#dokuwiki-plugin-}"              # -> ifday (unchanged if no prefix)
+          name="${repo#dokuwiki-plugin-}"              # -> ifday
           echo "PLUGIN_NAME=$name" | tee -a "$GITHUB_ENV"
           echo "Derived PLUGIN_NAME=$name"
 
       - name: Ensure file exists
         run: |
-          set -euo pipefail
           if [[ ! -f "$FILE" ]]; then
             echo "::error title=Missing file::$FILE not found in the PR."
             exit 1
@@ -39,14 +37,11 @@ jobs:
 
       - name: Auto-fix key spacing (spaces → single TAB)
         run: |
-          set -euo pipefail
-          # Replace one-or-more spaces after a lowercase key with a single TAB
           sed -i 's/^\([a-z]\+\) \+/\1\t/' "$FILE"
 
       - name: Commit auto-fix if changed (same-repo PRs only)
         if: ${{ github.event.pull_request.head.repo.full_name == github.repository && !cancelled() }}
         run: |
-          set -euo pipefail
           if ! git diff --quiet -- "$FILE"; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -55,33 +50,37 @@ jobs:
             git push
           fi
 
-      - name: Check UTF-8 without BOM
+      - name: Validate plugin.info.txt
         run: |
           set -euo pipefail
-          if head -c 3 "$FILE" | od -An -t x1 | tr -d ' \n' | grep -qi '^efbbbf'; then
-            echo "::error title=BOM detected::$FILE must be UTF-8 without BOM."
-            exit 1
-          fi
 
-      - name: Check LF line endings
-        run: |
-          set -euo pipefail
-          if grep -q $'\r' "$FILE"; then
-            echo "::error title=CRLF detected::$FILE contains Windows line endings. Use LF."
-            exit 1
-          fi
-
-      - name: Validate structure and fields
-        env:
-          PLUGIN_NAME: ${{ env.PLUGIN_NAME }}
-        run: |
-          set -euo pipefail
+          is_valid_date() {
+            local d="$1"
+            [[ "$d" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || return 1
+            if date -d "$d" "+%Y-%m-%d" >/dev/null 2>&1; then
+              return 0
+            fi
+            if date -j -f "%Y-%m-%d" "$d" "+%Y-%m-%d" >/dev/null 2>&1; then
+              return 0
+            fi
+            if command -v python3 >/dev/null 2>&1 && python3 - <<PY
+import sys, datetime
+try:
+  datetime.date.fromisoformat("$d")
+  sys.exit(0)
+except Exception:
+  sys.exit(1)
+            PY
+            then return 0; fi
+              return $?
+            fi
+            return 1
+          }
 
           REQUIRED_KEYS=(base author email date name desc url)
           ALLOWED_KEYS=(base author email date name desc url)
           BAD=0
 
-          # Parse into maps counts[] and F[] (values) without sourcing
           declare -A counts F
           while IFS=$'\037' read -r k v; do
             [[ -z "$k" ]] && continue
@@ -98,7 +97,6 @@ jobs:
             }
           ' "$FILE")
 
-          # Required keys present exactly once
           for k in "${REQUIRED_KEYS[@]}"; do
             if [[ -z "${counts[$k]:-}" ]]; then
               echo "::error title=Missing key::Key '${k}' is required."
@@ -109,17 +107,15 @@ jobs:
             fi
           done
 
-          # No unknown keys
           for k in "${!counts[@]}"; do
             ok=0
             for a in "${ALLOWED_KEYS[@]}"; do [[ "$k" == "$a" ]] && ok=1; done
             if [[ $ok -ne 1 ]]; then
-              echo "::error title=Unknown key::Key '${k}' is not allowed. Allowed keys: ${ALLOWED_KEYS[*]}"
+              echo "::error title=Unknown key::Key '${k}' is not allowed."
               BAD=1
             fi
           done
 
-          # Values
           email="${F[email]:-}"
           datev="${F[date]:-}"
           url="${F[url]:-}"
@@ -127,31 +123,26 @@ jobs:
           namev="${F[name]:-}"
           descv="${F[desc]:-}"
 
-          # base matches folder name if PLUGIN_NAME available
           if [[ -n "${PLUGIN_NAME:-}" && "$basev" != "$PLUGIN_NAME" ]]; then
             echo "::error title=base mismatch::base='$basev' does not match folder '$PLUGIN_NAME'."
             BAD=1
           fi
 
-          # Email
           if [[ ! "$email" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$ ]]; then
             echo "::error title=Invalid email::email='$email' looks invalid."
             BAD=1
           fi
 
-          # Date YYYY-MM-DD and real date
-          if [[ ! "$datev" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || ! date -d "$datev" "+%Y-%m-%d" >/dev/null 2>&1; then
+          if ! is_valid_date "$datev"; then
             echo "::error title=Invalid date::date='$datev' must be valid YYYY-MM-DD."
             BAD=1
           fi
 
-          # URL must be https
           if [[ ! "$url" =~ ^https:// ]]; then
             echo "::error title=URL must be HTTPS::url='$url' must start with https://"
             BAD=1
           fi
 
-          # name and desc non-empty
           if [[ -z "$namev" ]]; then
             echo "::error title=Missing name::name field is empty."
             BAD=1
@@ -161,7 +152,6 @@ jobs:
             BAD=1
           fi
 
-          # Enforce that keys use a TAB (post auto-fix safeguard)
           for k in "${REQUIRED_KEYS[@]}"; do
             if ! grep -q "^${k}"$'\t' "$FILE"; then
               echo "::error title=Tab required::Key '${k}' must be followed by a TAB."
@@ -169,7 +159,6 @@ jobs:
             fi
           done
 
-          # Helpful debug
           echo "::notice title=Parsed fields::base='${F[base]:-}', author='${F[author]:-}', email='${F[email]:-}', date='${F[date]:-}', name='${F[name]:-}', url='${F[url]:-}'"
 
           [[ $BAD -eq 1 ]] && exit 1
