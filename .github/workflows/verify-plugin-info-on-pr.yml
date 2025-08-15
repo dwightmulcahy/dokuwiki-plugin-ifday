@@ -163,7 +163,7 @@ jobs:
 
           # Enforce that keys use a TAB (post auto-fix safeguard)
           for k in "${REQUIRED_KEYS[@]}"; do
-            if ! grep -q "^${k}\t" "$FILE"; then
+            if ! grep -q "^${k}"$'\t' "$FILE"; then
               echo "::error title=Tab required::Key '${k}' must be followed by a TAB."
               BAD=1
             fi
