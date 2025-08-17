@@ -1,4 +1,4 @@
-name: Verify plugin.info.txt (PR)
+name: Verify plugin.info.txt
 
 on:
   pull_request:
@@ -34,17 +34,30 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ ! -f "$FILE" ]]; then
-            echo "::error title=Missing file::$FILE not found in the PR."
-            exit 1
-          fi
+          [[ -f "$FILE" ]] || { echo "::error title=Missing file::$FILE not found in the PR."; exit 1; }
 
-      - name: Auto-fix key spacing (spaces → single TAB)
+      - name: Quick encoding/line-ending sanity
         shell: bash
         run: |
           set -euo pipefail
-          # Replace one-or-more spaces after a lowercase key with a single TAB
-          sed -i 's/^\([a-z]\+\) \+/	/' "$FILE"
+          # No UTF-8 BOM
+          if head -c 3 "$FILE" | od -An -t x1 | tr -d ' \n' | grep -qi '^efbbbf'; then
+            echo "::error title=BOM detected::$FILE must be UTF-8 without BOM."
+            exit 1
+          fi
+          # No CRLF
+          if grep -q $'\r' "$FILE"; then
+            echo "::error title=CRLF detected::$FILE contains Windows line endings. Use LF."
+            exit 1
+          fi
+
+      - name: Auto-fix key spacing (collapse spaces/tabs to single TAB)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Replace any run of spaces/tabs after a lowercase key with exactly one TAB
+          # Example: "date   2025-08-14" -> "date<TAB>2025-08-14"
+          sed -E -i 's/^([a-z]+)[[:space:]]+/\1\t/' "$FILE"
 
       - name: Commit auto-fix if changed (same-repo PRs only)
         if: ${{ github.event.pull_request.head.repo.full_name == github.repository && !cancelled() }}
@@ -55,7 +68,7 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add "$FILE"
-            git commit -m "fix(plugin.info.txt): replace spaces with a single tab after keys"
+            git commit -m "fix(plugin.info.txt): normalize whitespace to single tab after keys"
             git push
           fi
 
@@ -68,8 +81,8 @@ jobs:
             local d="$1"
             [[ "$d" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || return 1
 
-            LC_ALL=C date -d "$d" "+%Y-%m-%d" >/dev/null 2>&1 && return 0
-            LC_ALL=C date -j -f "%Y-%m-%d" "$d" "+%Y-%m-%d" >/dev/null 2>&1 && return 0
+            LC_ALL=C date -d "$d" "+%Y-%m-%d" >/dev/null 2>&1 && return 0   # GNU date (Ubuntu)
+            LC_ALL=C date -j -f "%Y-%m-%d" "$d" "+%Y-%m-%d" >/dev/null 2>&1 && return 0   # BSD date (macOS)
 
             if command -v python3 >/dev/null 2>&1 && python3 - <<PY
 import sys, datetime
@@ -82,7 +95,6 @@ PY
             then
               return 0
             fi
-
             return 1
           }
 
@@ -91,20 +103,21 @@ PY
           BAD=0
 
           declare -A counts F
-          while IFS=$'' read -r k v; do
-            [[ -z "$k" ]] && continue
-            counts["$k"]=$(( ${counts["$k"]:-0} + 1 ))
-            F["$k"]="$v"
-          done < <(awk '
-            BEGIN{FS="\t"}
-            /^[a-z]+[ \t]/ {
-              key=$1
-              sub(/[ \t]+$/, "", key)
-              val=$2
-              sub(/\r$/, "", val)
-              printf "%s\037%s\n", key, val
-            }
-          ' "$FILE")
+
+          # Parse lines that start with lowercase key and at least one space/tab, keeping the full value (including extra tabs)
+          while IFS= read -r line; do
+            [[ "$line" =~ ^[a-z]+[[:space:]] ]] || continue
+            key="${line%%[[:space:]]*}"
+            # Find first literal tab; require a tab after normalization step
+            idx=$(awk -v s="$line" 'BEGIN{pos=index(s, "\t"); if(pos==0) pos=-1; print pos}')
+            if [[ "$idx" -gt 0 ]]; then
+              val="${line:idx}"            # includes everything after first tab
+              val="${val#$'\t'}"           # strip the first tab itself
+              val="${val%$'\r'}"           # strip CR if any
+              counts["$key"]=$(( ${counts["$key"]:-0} + 1 ))
+              F["$key"]="$val"
+            fi
+          done < "$FILE"
 
           for k in "${REQUIRED_KEYS[@]}"; do
             if [[ -z "${counts[$k]:-}" ]]; then
@@ -161,8 +174,9 @@ PY
             BAD=1
           fi
 
+          # Enforce that each required key is followed by a literal TAB (not spaces)
           for k in "${REQUIRED_KEYS[@]}"; do
-            if ! grep -q "^${k}"$'	' "$FILE"; then
+            if ! grep -q "^${k}"$'\t' "$FILE"; then
               echo "::error title=Tab required::Key '${k}' must be followed by a TAB."
               BAD=1
             fi
