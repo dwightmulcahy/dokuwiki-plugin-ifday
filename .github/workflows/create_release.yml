@@ -62,25 +62,11 @@ jobs:
           sudo mv git-cliff-2.10.0/git-cliff /usr/local/bin/git-cliff
           git-cliff --version
 
-      - name: Generate CHANGELOG.md from commits (fallback config if missing)
+      - name: Generate CHANGELOG.md from commits
         run: |
           set -euo pipefail
-          if [[ -f cliff.toml ]]; then
-            git-cliff --config cliff.toml -o CHANGELOG.md
-          else
-            # Minimal sensible default
-            cat > /tmp/_cliff.toml <<'EOF'
-            [changelog]
-            header = "# Changelog"
-            trim = true
-            [git]
-            conventional_commits = true
-            filter_commits = true
-            tag_pattern = "v[0-9].*"
-            topo_order = false
-            EOF
-            git-cliff --config /tmp/_cliff.toml -o CHANGELOG.md
-          fi
+          ls
+          git-cliff --config cliff.toml -o CHANGELOG.md
 
       - name: Build release ZIP with correct top-level folder
         run: |
