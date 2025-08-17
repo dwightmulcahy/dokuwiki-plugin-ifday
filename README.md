@@ -6,14 +6,14 @@ This plugin adds the `<ifday>` syntax block to conditionally render content base
 It supports:
 - Multi-condition logic with `AND`, `OR`, `&&`, `||`
 - Comparison operators: `==`, `!=`, `<`, `>`, `<=`, `>=`
-- Alias operator: `is` (treated as `==`)
+- Alias operators: `is` (treated as `==`), `is not` (treated as `!=`)
 - Negation operator: `NOT` (treated as logical NOT `!`)
 - Parentheses for grouping conditions
 - Special date keywords: `weekday`, `weekend`, and `day` (with specific day names like `monday`, `tuesday`, etc.)
 - Day name abbreviations (`mon`, `tue`, `wed`, etc.) are supported and normalized
 - Boolean checks (e.g., `<ifday weekday>`) without explicit comparisons
-- `<else>` block support 
-- Configurable option to show/hide error messages on the wiki page for invalid conditions
+- `<else>` block support for `false` condition processing
+- Configurable option to show/hide inline error messages on the wiki page for invalid conditions
 
 ---
 
@@ -41,7 +41,7 @@ This content appears only on Wednesdays.
 
 ## `<else>` Block
 
-An optional `<else>` block allows you to specify alternative content to display when the primary condition evaluates to false. This removes the need to use a separate `<ifday not ...>` block for simple `true`/`false` scenarios.
+An optional `<else>` block allows you to specify alternative content to display when the primary condition evaluates to `false`. This removes the need to use a separate `<ifday not ...>` block for simple `true`/`false` scenarios.
 
 If the condition is `true`, the content within the main `ifday` block is rendered. If the condition is `false`, the content within the `<else>` block is rendered instead. If there is no `<else>` block, and the condition is `false`, no content is displayed.
 
@@ -55,15 +55,15 @@ Using the `<else>` block.
 </ifday>
 
 <ifday day is "Monday">
-It's the start of the week!
+  It's the start of the week!
 <else>
-It's not Monday.
+  It's not Monday.
 </ifday>
 
 <ifday (day == "Friday" or day == "Saturday")>
-Happy Hour is starting!
+  Happy Hour is starting!
 <else>
-It's not time for Happy Hour yet.
+  It's not time for Happy Hour yet.
 </ifday>
 
 <ifday day is Friday>
@@ -76,10 +76,10 @@ It's not time for Happy Hour yet.
 ## Comparison Operators
 You can compare `day`, `weekday`, and `weekend` using:
 
-| Operator | Meaning                                  | Example                      |
-| -------- | ---------------------------------------- | ---------------------------- |
-| `==` or `is` | Equals                               | `day == friday` or `day is friday` |
-| `!=`     | Does not equal                          | `day != sunday`              |
+| Operator             | Meaning                                  | Example                              |
+|----------------------| ---------------------------------------- |--------------------------------------|
+| `==` or `is`         | Equals                               | `day == friday` or `day is friday`   |
+| `!=` or `is not`     | Does not equal                          | `day != sunday` or `is not weekday`   |
 | `<`, `>`, `<=`, `>=` | Numerical/time comparisons (limited use) | **Not typically used for day names** |
 
 Example:
