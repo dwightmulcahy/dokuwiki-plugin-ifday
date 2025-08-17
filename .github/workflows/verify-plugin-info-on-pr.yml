@@ -36,7 +36,7 @@ jobs:
           set -euo pipefail
           [[ -f "$FILE" ]] || { echo "::error title=Missing file::$FILE not found in the PR."; exit 1; }
 
-      - name: Quick encoding/line-ending sanity
+      - name: Quick encoding and line endings
         shell: bash
         run: |
           set -euo pipefail
@@ -51,17 +51,17 @@ jobs:
             exit 1
           fi
 
-      - name: Auto-fix key spacing (collapse spaces/tabs to single TAB)
+      - name: Auto-fix key spacing to a single TAB (no literal tabs in YAML)
         shell: bash
         run: |
           set -euo pipefail
-          # Replace any run of spaces/tabs after a lowercase key with exactly one TAB
+          TAB=$'\t'
+          # Collapse any spaces/tabs after a lowercase key to exactly one TAB
           # Example: "date   2025-08-14" -> "date<TAB>2025-08-14"
-          sed -E -i 's/^([a-z]+)[[:space:]]+/\1\t/' "$FILE"
-
+          perl -0777 -pe 's/^([a-z]+)[ \t]+/\1\t/mg' -i "$FILE"
 
       - name: Commit auto-fix if changed (same-repo PRs only)
-        if: ${{ github.event.pull_request.head.repo.full_name == github.repository && !cancelled() }}
+        if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
         shell: bash
         run: |
           set -euo pipefail
@@ -69,7 +69,7 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add "$FILE"
-            git commit -m "fix(plugin.info.txt): normalize whitespace to single tab after keys"
+            git commit -m "fix(plugin.info.txt): normalize whitespace to a single tab after keys"
             git push
           fi
 
@@ -91,7 +91,6 @@ jobs:
 
           declare -A counts F
 
-          # Parse lines that start with lowercase key and at least one space/tab, keeping the full value (including extra tabs)
           while IFS= read -r line; do
             [[ "$line" =~ ^[a-z]+[[:space:]] ]] || continue
             # Expect exactly one tab after normalization
@@ -135,22 +134,18 @@ jobs:
             echo "::error title=base mismatch::base='$basev' does not match folder '$PLUGIN_NAME'."
             BAD=1
           fi
-
           if [[ ! "$email" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$ ]]; then
             echo "::error title=Invalid email::email='$email' looks invalid."
             BAD=1
           fi
-
           if ! is_valid_date "$datev"; then
             echo "::error title=Invalid date::date='$datev' must be valid YYYY-MM-DD."
             BAD=1
           fi
-
           if [[ ! "$url" =~ ^https:// ]]; then
             echo "::error title=URL must be HTTPS::url='$url' must start with https://"
             BAD=1
           fi
-
           if [[ -z "$namev" ]]; then
             echo "::error title=Missing name::name field is empty."
             BAD=1
@@ -167,4 +162,4 @@ jobs:
 
           echo "::notice title=Parsed fields::base='${F[base]:-}', author='${F[author]:-}', email='${F[email]:-}', date='${F[date]:-}', name='${F[name]:-}', url='${F[url]:-}'"
 
-          [[ $BAD -eq 1 ]] && exit 1
+          exit "$BAD"
