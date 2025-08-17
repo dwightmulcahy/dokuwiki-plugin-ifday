@@ -52,46 +52,34 @@ jobs:
             plugin_name="$repo"
           fi
           echo "PLUGIN_NAME=$plugin_name" >> "$GITHUB_ENV"
-
-      - name: Setup git config
-        run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
+          echo "TAG_NAME=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"         # e.g. v1.2.3
+          echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"        # e.g. 1.2.3
 
       - name: Install git-cliff
         run: |
+          set -euo pipefail
           curl -sSL https://github.com/orhun/git-cliff/releases/download/v2.10.0/git-cliff-2.10.0-x86_64-unknown-linux-gnu.tar.gz | tar -xz
           sudo mv git-cliff-2.10.0/git-cliff /usr/local/bin/git-cliff
           git-cliff --version
 
-      - name: Generate CHANGELOG.md from commits
-        run: git-cliff --config cliff.toml -o CHANGELOG.md
-
-      - name: Update plugin date in plugin.info.txt with a real tab
+      - name: Generate CHANGELOG.md from commits (fallback config if missing)
         run: |
           set -euo pipefail
-          today=$(TZ=America/Chicago date +'%Y-%m-%d')
-
-          # Normalize only the 'date' line to: "date<TAB>YYYY-MM-DD"
-          awk -v today="$today" 'BEGIN{FS="[ \t]+"; OFS="\t"}
-            /^date[ \t]/ { print "date", today; next }
-            { print }
-          ' plugin.info.txt > plugin.info.txt.tmp
-
-          # Ensure UTF-8 without BOM
-          iconv -f UTF-8 -t UTF-8 -o plugin.info.txt plugin.info.txt.tmp
-          rm -f plugin.info.txt.tmp
-
-          echo "Updated plugin date to ${today}"
-          printf '--- plugin.info.txt ---\n'; cat -A plugin.info.txt
-
-          # Commit only if there are changes
-          if ! git diff --quiet plugin.info.txt; then
-            git add plugin.info.txt
-            git commit -m "chore: update plugin.info.txt date to ${today}"
-            git push
+          if [[ -f cliff.toml ]]; then
+            git-cliff --config cliff.toml -o CHANGELOG.md
           else
-            echo "No changes to commit"
+            # Minimal sensible default
+            cat > /tmp/_cliff.toml <<'EOF'
+            [changelog]
+            header = "# Changelog"
+            trim = true
+            [git]
+            conventional_commits = true
+            filter_commits = true
+            tag_pattern = "v[0-9].*"
+            topo_order = false
+            EOF
+            git-cliff --config /tmp/_cliff.toml -o CHANGELOG.md
           fi
 
       - name: Build release ZIP with correct top-level folder
@@ -99,7 +87,6 @@ jobs:
           set -euo pipefail
           shopt -s nullglob
 
-          VERSION="${GITHUB_REF_NAME#v}"  # tag v1.2.3 -> 1.2.3
           STAGE="build/stage"
           OUTDIR="build"
           mkdir -p "$STAGE" "$OUTDIR"
@@ -125,24 +112,44 @@ jobs:
             fi
           done <<< "${INCLUDE_FILES}"
 
-          # Create versioned zip
-          ZIP_FILE="${OUTDIR}/${PLUGIN_NAME}-${VERSION}.zip"
+          # Normalize plugin.info.txt in the staged copy only
+          if [[ -f "$DEST/plugin.info.txt" ]]; then
+            today=$(TZ=America/Chicago date +'%Y-%m-%d')
+
+            # strip UTF-8 BOM if present, then ensure "date<TAB>YYYY-MM-DD"
+            tmp="$DEST/plugin.info.txt.tmp"
+            { sed '1s/^\xEF\xBB\xBF//' "$DEST/plugin.info.txt" || cat "$DEST/plugin.info.txt"; } > "$tmp"
+
+            awk -v today="$today" 'BEGIN{FS="[ \t]+"; OFS="\t"}
+              /^date([ \t]|$)/ { print "date", today; next }
+              { print }
+            ' "$tmp" > "$DEST/plugin.info.txt"
+
+            rm -f "$tmp"
+            printf '--- staged plugin.info.txt ---\n' && cat -A "$DEST/plugin.info.txt"
+          else
+            echo "Warning: $DEST/plugin.info.txt not found; skipping date normalization"
+          fi
+
+          # Create versioned zip using the exact tag (includes the leading v)
+          ZIP_FILE="${OUTDIR}/${PLUGIN_NAME}-${TAG_NAME}.zip"
           rm -f "$ZIP_FILE"
-          (cd "$STAGE" && zip -r -q "../${PLUGIN_NAME}-${VERSION}.zip" "${PLUGIN_NAME}")
+          (cd "$STAGE" && zip -r -q "../${PLUGIN_NAME}-${TAG_NAME}.zip" "${PLUGIN_NAME}")
 
           # Copy changelog alongside
           cp CHANGELOG.md "$OUTDIR"/
 
           echo "Created $ZIP_FILE"
+          echo "ZIP_FILE=$ZIP_FILE" >> "$GITHUB_ENV"
 
       - name: Create GitHub Release and upload assets
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          name: Release ${{ github.ref_name }}
+          tag_name: ${{ env.TAG_NAME }}
+          name: Release ${{ env.TAG_NAME }}
           body_path: build/CHANGELOG.md
           files: |
-            build/${{ env.PLUGIN_NAME }}-${{ github.ref_name || 'v0.0.0' }}.zip
+            ${{ env.ZIP_FILE }}
             build/CHANGELOG.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
