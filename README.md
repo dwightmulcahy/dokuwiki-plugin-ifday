@@ -1,5 +1,7 @@
 # ifday Plugin for DokuWiki
 
+[![ifday plugin tests](https://github.com/dwightmulcahy/dokuwiki-plugin-ifday/actions/workflows/ifday-tests.yml/badge.svg?branch=main)](https://github.com/dwightmulcahy/dokuwiki-plugin-ifday/actions/workflows/ifday-tests.yml)
+
 ## Description
 This plugin adds the `<ifday>` syntax block to conditionally render content based on date-related conditions.
 
