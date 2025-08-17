@@ -166,7 +166,99 @@ $tests = [
     ['condition' => 'funday',          'failureMsg' => "Safety check failed for processed condition 'funday'"],
     ['condition' => 'day === mon',     'failureMsg' => "Safety check failed for processed condition 'day === mon'"],
     ['condition' => 'day = mon',       'failureMsg' => "Safety check failed for processed condition 'day = mon'"],
+
+    // "today" comparisons (normalize to injected $currentDay)
+    ['condition' => 'today is monday', 'currentDays' => ['mon']],
+    ['condition' => 'today == fri',    'currentDays' => ['fri']],
+    ['condition' => 'today is not sun','currentDays' => ['mon','tue','wed','thu','fri','sat']],
+
+    // Workday / businessday aliases
+    ['condition' => 'workday',         'currentDays' => ['mon','tue','wed','thu','fri']],
+    ['condition' => 'businessday',     'currentDays' => ['mon','tue','wed','thu','fri']],
+
+    // Mixed  usage
+    ['condition' => '(today is mon AND workday)',       'currentDays' => ['mon']],
+    ['condition' => '(today is tue) OR (is weekend)',   'currentDays' => ['tue','sat','sun']],
+
+    // tomorrow/yesterday are computed from $currentDay
+    ['condition' => '(tomorrow is tue)',   'currentDays' => ['mon']],
+    ['condition' => '(yesterday == sun)',  'currentDays' => ['mon']],
+
+    // Today / Tomorrow / Yesterday (explicit comparisons)
+    ['condition' => 'today is mon',                 'currentDays' => ['mon']],
+    ['condition' => 'today == fri',                 'currentDays' => ['fri']],
+    ['condition' => 'today is not sun',             'currentDays' => ['mon','tue','wed','thu','fri','sat']],
+    ['condition' => 'tomorrow is tue',              'currentDays' => ['mon']],
+    ['condition' => 'tomorrow != sat',              'currentDays' => ['mon','tue','wed','thu','sat','sun']], // false only on Fri
+    ['condition' => 'yesterday is sun',             'currentDays' => ['mon']],
+    ['condition' => 'yesterday != mon',             'currentDays' => ['mon','wed','thu','fri','sat','sun']], // false only on Tue
+
+    // Mixed-case & spacing robustness
+    ['condition' => 'ToDay IS MonDay',              'currentDays' => ['mon']],
+    ['condition' => '   tomorrow    is    WED  ',   'currentDays' => ['tue']],
+
+    // Multi-part relative logic
+    ['condition' => 'yesterday is fri or tomorrow is mon',               'currentDays' => ['sat','sun']],
+    ['condition' => '(yesterday is mon AND tomorrow is wed)',            'currentDays' => ['tue']],
+    ['condition' => '((yesterday is fri) AND (tomorrow is sun))',        'currentDays' => ['sat']],
+    ['condition' => '(today is mon AND day+1 == wed)',                   'currentDays' => []], // contradiction
+    ['condition' => '(today is mon AND today is tue)',                   'currentDays' => []], // contradiction
+
+    // Day offsets
+    ['condition' => 'day+1 == sat',                 'currentDays' => ['fri']],
+    ['condition' => 'day-1 == sun',                 'currentDays' => ['mon']],
+    ['condition' => 'day+2 == wed',                 'currentDays' => ['mon']],
+    ['condition' => 'day+3 == sun',                 'currentDays' => ['thu']],
+    ['condition' => 'day-2 == sun',                 'currentDays' => ['tue']],
+    ['condition' => 'day+7 == mon',                 'currentDays' => ['mon']], // wrap-around
+    ['condition' => 'day-14 == wed',                'currentDays' => ['wed']], // wrap-around
+    ['condition' => '(day+1 == sat OR day-1 == sat)', 'currentDays' => ['fri','sun']],
+    ['condition' => 'is weekday AND (day+1 == sat)',  'currentDays' => ['fri']],
+    ['condition' => 'is weekend AND (day-1 == fri)',  'currentDays' => ['sat']],
+
+    // invalid tokens
+    ['condition' => 'day in [mon,tue]', 'failureMsg' => "Safety check failed for processed condition 'day in [mon,tue]'"],
+
+    /* Aliases & business-day synonyms */
+    ['condition' => 'is workday',                    'currentDays' => ['mon','tue','wed','thu','fri']],
+    ['condition' => 'is not businessday',            'currentDays' => ['sat','sun']],
+    ['condition' => 'workday AND (today is fri)',    'currentDays' => ['fri']],
+    ['condition' => 'day == wed AND is businessday', 'currentDays' => ['wed']],
+    ['condition' => 'is not weekend AND (today is tue OR today is thu)', 'currentDays' => ['tue','thu']],
+
+    /* Operator precedence sanity */
+    ['condition' => 'today is fri OR today is sat AND weekend',          'currentDays' => ['fri','sat']],
+    ['condition' => 'day == mon OR tomorrow is tue AND weekend',         'currentDays' => ['mon']], // rhs never true
+
+
+    // -----------------------------
+    // invalid / parse-error expectations
+    // -----------------------------
+    ['condition' => 'today is blarg',       'failureMsg' => 'Invalid day name(s) in condition: blarg'],
+    ['condition' => 'tomorrow == fRiYay',   'failureMsg' => 'Invalid day name(s) in condition: friyay'],
+    ['condition' => 'day+1 == tues',        'failureMsg' => 'Invalid day name(s) in condition: tues'],
+    ['condition' => 'today === mon',        'failureMsg' => "Safety check failed for processed condition 'today === mon'"],
+    ['condition' => 'today',                'failureMsg' => "Safety check failed for processed condition 'today'"],
+    ['condition' => 'tomorrow',             'failureMsg' => "Safety check failed for processed condition 'tomorrow'"],
+
+    // -----------------------------
+    // More "Safety check failed" tests
+    // -----------------------------
+    ['condition' => 'is fri',               'failureMsg' => "Safety check failed for processed condition 'is fri'"],
+    ['condition' => 'NOT mon',              'failureMsg' => "Safety check failed for processed condition '! mon'"],
+    ['condition' => 'day + 1 == tue',       'failureMsg' => "Safety check failed for processed condition 'day + 1 == tue'"],
+    ['condition' => 'day <= mon',           'failureMsg' => "Safety check failed for processed condition 'day <= mon'"],
+    ['condition' => 'today <= tue',         'failureMsg' => "Safety check failed for processed condition 'today <= tue'"],
+    ['condition' => 'day+1 = tue',          'failureMsg' => "Safety check failed for processed condition '0 = tue'"],
+    ['condition' => 'day == mon || tue',    'failureMsg' => "Safety check failed for processed condition '1 || tue'"],
+    ['condition' => '(tue)',                'failureMsg' => "Safety check failed for processed condition '(tue)'"],
+    ['condition' => 'is not fri',           'failureMsg' => "Safety check failed for processed condition 'is ! fri'"],
+    ['condition' => 'day < tue',            'failureMsg' => "Safety check failed for processed condition 'day < tue'"],
+    ['condition' => 'today is',             'failureMsg' => "Safety check failed for processed condition 'today is'"],
+    ['condition' => 'day in [mon,tue]',     'failureMsg' => "Safety check failed for processed condition 'day in [mon,tue]'"],
+    ['condition' => '((day == mon))foo',    'failureMsg' => "Safety check failed for processed condition '((1))foo'"],
 ];
+
 
 // =====================================================
 // Truth-table helpers (pretty output + quiet-friendly)
@@ -388,6 +480,68 @@ $allTestsPass = runDayConditionTests($tests, $daysOfWeek, $method, $plugin, $qui
 // =====================================================
 tt_run_boolean_rows($tests, $daysOfWeek, $method, $plugin, $quiet, $ascii, $colorEnabled, $allTestsPass);
 tt_run_error_rows($tests, $method, $plugin, $quiet, $colorEnabled, $allTestsPass);
+
+// Helper to swap IFDAY_TEST_DATE for a scoped test block
+function withTestDate(string $date, callable $fn): void {
+    $prev = getenv('IFDAY_TEST_DATE');
+    putenv("IFDAY_TEST_DATE=$date");
+    try { $fn(); } finally {
+        if ($prev === false || $prev === null) putenv('IFDAY_TEST_DATE');
+        else putenv("IFDAY_TEST_DATE=$prev");
+    }
+}
+
+// ---------- Month/Year blocks ----------
+
+// 1) December snapshot (e.g., 2025-12-15)
+withTestDate('2025-12-15', function() use ($daysOfWeek, $method, $plugin, $quiet, $ascii, $colorEnabled, &$allTestsPass) {
+    $decTests = [
+        // Month equality/inequality/ordering
+        ['condition' => 'month == dec',     'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
+        ['condition' => 'month != january', 'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
+        ['condition' => 'month >= nov',     'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
+        ['condition' => 'month >  6',       'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
+        ['condition' => 'month <  12',      'currentDays' => []],
+        ['condition' => 'month <= 12',      'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
+
+        // Membership
+        ['condition' => 'month in [jun,jul,aug]', 'currentDays' => []],
+
+        // Year operators (assuming base year 2025)
+        ['condition' => 'year == 2025',  'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
+        ['condition' => 'year != 1999',  'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
+        ['condition' => 'year >  2024',  'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
+        ['condition' => 'year >= 2025',  'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
+        ['condition' => 'year <  2030',  'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
+        ['condition' => 'year <= 2025',  'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
+
+        // Safety-check/invalid month tokens
+        ['condition' => 'month == foo',             'currentDays' => [], 'failureMsg' => 'Invalid month name(s) in condition: foo'],
+        ['condition' => 'month in [dec, bad]',      'currentDays' => [], 'failureMsg' => 'Invalid month name(s) in condition: bad'],
+        ['condition' => 'month >= 13',              'currentDays' => [], 'failureMsg' => 'Invalid month name(s) in condition: 13'],
+        ['condition' => 'month in [0, 1]',          'currentDays' => [], 'failureMsg' => 'Invalid month name(s) in condition: 0'],
+    ];
+
+    // Run with your existing helpers
+    $allTestsPass = runDayConditionTests($decTests, $daysOfWeek, $method, $plugin, $quiet, $colorEnabled) && $allTestsPass;
+    tt_run_boolean_rows($decTests, $daysOfWeek, $method, $plugin, $quiet, $ascii, $colorEnabled, $allTestsPass);
+    tt_run_error_rows($decTests, $method, $plugin, $quiet, $colorEnabled, $allTestsPass);
+});
+
+// 2) July snapshot (e.g., 2025-07-15) — to see summer membership go TRUE
+withTestDate('2025-07-15', function() use ($daysOfWeek, $method, $plugin, $quiet, $ascii, $colorEnabled, &$allTestsPass) {
+    $julTests = [
+        ['condition' => 'month in [jun,jul,aug]', 'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
+        ['condition' => 'month == july',          'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
+        ['condition' => 'month < jun',            'currentDays' => []],
+        ['condition' => 'month > aug',            'currentDays' => []],
+    ];
+
+    $allTestsPass = runDayConditionTests($julTests, $daysOfWeek, $method, $plugin, $quiet, $colorEnabled) && $allTestsPass;
+    tt_run_boolean_rows($julTests, $daysOfWeek, $method, $plugin, $quiet, $ascii, $colorEnabled, $allTestsPass);
+    // (no error rows here)
+});
+
 
 // =====================================================
 // Rendered Content tests (ALL days)
