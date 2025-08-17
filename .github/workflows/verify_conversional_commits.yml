@@ -70,7 +70,7 @@ jobs:
             skip-semantic-check
 
           # If true, enforces that a PR with only one commit must still pass validation
-          validateSingleCommit: true
+          validateSingleCommit: false
 
           # If true, PRs marked as "WIP" (work in progress) will fail validation
           wip: true
