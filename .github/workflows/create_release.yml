@@ -126,7 +126,7 @@ jobs:
             ' "$tmp" > "$DEST/plugin.info.txt"
 
             rm -f "$tmp"
-            printf '--- staged plugin.info.txt ---\n' && cat -A "$DEST/plugin.info.txt"
+            printf '%s\n' '--- plugin.info.txt ---' && cat -A "$DEST/plugin.info.txt"
           else
             echo "Warning: $DEST/plugin.info.txt not found; skipping date normalization"
           fi
