@@ -165,5 +165,5 @@ jobs:
           done
 
           echo "::notice title=Parsed fields::base='${F[base]:-}', author='${F[author]:-}', email='${F[email]:-}', date='${F[date]:-}', name='${F[name]:-}', url='${F[url]:-}'"
-
-          [[ $BAD -eq 1 ]] && exit 1
+  
+          exit "$BAD"
