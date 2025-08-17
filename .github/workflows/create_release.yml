@@ -65,6 +65,7 @@ jobs:
       - name: Generate CHANGELOG.md from commits (fallback config if missing)
         run: |
           set -euo pipefail
+          ls
           if [[ -f cliff.toml ]]; then
             git-cliff --config cliff.toml -o CHANGELOG.md
           else
