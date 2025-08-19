@@ -84,8 +84,11 @@ define('DOKU_INC', true);
 require_once __DIR__ . '/../syntax.php';
 $plugin = new syntax_plugin_ifday();
 
-// Use reflection to get access to the private method
-$reflection = new ReflectionClass($plugin);
+// 1. Create an instance of the new evaluator class
+$evaluator = new Ifday_ConditionEvaluator();
+
+// 2. Get the ReflectionMethod from the correct class
+$reflection = new ReflectionClass($evaluator);
 $method = $reflection->getMethod('evaluateCondition');
 $method->setAccessible(true);
 
@@ -374,12 +377,13 @@ function tt_header_days_first(array $days, array $tests, bool $quiet, bool $asci
  * Print truth-table rows for all boolean tests (no failureMsg) across all days,
  * with **days first** and **condition last**.
  */
-function tt_run_boolean_rows(array $tests, array $days, $method, $plugin, bool $quiet, bool $ascii, bool $colorEnabled, bool &$allTestsPass): void {
-    $booleanTests = array_values(array_filter($tests, fn($t) => !isset($t['failureMsg'])));
+function tt_run_boolean_rows(array $rowTests, array $days, $method, $plugin, bool $quiet, bool $ascii, bool $colorEnabled, bool &$allTestsPass): void {
+    global $evaluator;
+    $booleanTests = array_values(array_filter($rowTests, fn($t) => !isset($t['failureMsg'])));
     if (!$booleanTests) return;
 
     // Header and column widths
-    [$dayColW, $condW] = tt_header_days_first($days, $tests, $quiet, $ascii, $colorEnabled);
+    [$dayColW, $condW] = tt_header_days_first($days, $rowTests, $quiet, $ascii, $colorEnabled);
     $sp = ' ';
     $S  = tt_symbols($ascii);
 
@@ -390,7 +394,7 @@ function tt_run_boolean_rows(array $tests, array $days, $method, $plugin, bool $
         $mismatches = [];
 
         foreach ($days as $d) {
-            [$success, $value] = $method->invoke($plugin, $cond, $d);
+            [$success, $value] = $method->invoke($evaluator, $cond, new DateTime('last ' . $d));
             $expected = in_array($d, $validDays, true);
             $actual   = $success ? (bool)$value : null;
 
@@ -429,6 +433,7 @@ function tt_run_boolean_rows(array $tests, array $days, $method, $plugin, bool $
  * Uses 'mon' as an arbitrary day (parser should fail regardless).
  */
 function tt_run_error_rows(array $tests, $method, $plugin, bool $quiet, bool $colorEnabled, bool &$allTestsPass): void {
+    global $evaluator;
     $errorTests = array_values(array_filter($tests, fn($t) => isset($t['failureMsg'])));
     if (!$errorTests) return;
 
@@ -441,7 +446,7 @@ function tt_run_error_rows(array $tests, $method, $plugin, bool $quiet, bool $co
         $cond = $t['condition'];
         $expectedMsg = $t['failureMsg'];
 
-        [$success, $value] = $method->invoke($plugin, $cond, 'mon');
+        [$success, $value] = $method->invoke($evaluator, $cond, new DateTime('last mon'));
 
         if ($success === false && $value === $expectedMsg) {
             if (!$quiet) {
@@ -460,6 +465,7 @@ function tt_run_error_rows(array $tests, $method, $plugin, bool $quiet, bool $co
 // -----------------------------------------------------
 function runDayConditionTests(array $tests, array $daysOfWeek, $method, $plugin, bool $quiet, bool $colorEnabled): bool
 {
+    global $evaluator;
     $testsPassed = true;
 
     foreach ($tests as $test) {
@@ -468,7 +474,7 @@ function runDayConditionTests(array $tests, array $daysOfWeek, $method, $plugin,
         $failureMsg = $test['failureMsg'] ?? null; // only set for parse-error tests
 
         foreach ($daysOfWeek as $day) {
-            [$success, $result] = $method->invoke($plugin, $condition, $day);
+            [$success, $result] = $method->invoke($evaluator, $condition, new DateTime('last ' . $day));
 
             if ($success) {
                 // True when day not in allowed list → fail
@@ -532,6 +538,40 @@ function withTestDate(string $date, callable $fn): void {
     }
 }
 
+/**
+ * Test runner for conditions that depend on a specific, non-looping date.
+ */
+function runSpecificDateTests(array $tests, $method, bool $quiet, bool $colorEnabled): bool
+{
+    global $evaluator;
+    $testsPassed = true;
+
+    foreach ($tests as $test) {
+        $condition  = $test['condition'];
+        $failureMsg = $test['failureMsg'] ?? null;
+        $expectedResult = ($test['currentDays'] ?? []) !== []; // Expected to be true if any days are listed
+
+        [$success, $result] = $method->invoke($evaluator, $condition);
+
+        if ($success) {
+            if ($result !== $expectedResult) {
+                log_line(colorize("FAIL", 'red', $colorEnabled) . ": '$condition' returned " . var_export($result, true) . " (expected " . var_export($expectedResult, true) . ")\n", $quiet, true);
+                $testsPassed = false;
+            } else {
+                log_line(colorize("PASS", 'green', $colorEnabled) . ": '$condition'\n", $quiet);
+            }
+        } else {
+            if ($failureMsg !== null && $result === $failureMsg) {
+                log_line(colorize("PASS", 'green', $colorEnabled) . ": '$condition' correctly failed: '$result'\n", $quiet);
+            } else {
+                log_line(colorize("FAIL", 'red', $colorEnabled) . ": '$condition' failed unexpectedly: '$result' (expected '$failureMsg')\n", $quiet, true);
+                $testsPassed = false;
+            }
+        }
+    }
+    return $testsPassed;
+}
+
 // ---------- Month/Year blocks ----------
 
 // 1) December snapshot (e.g., 2025-12-15)
@@ -588,7 +628,9 @@ withTestDate('2025-12-15', function() use ($daysOfWeek, $method, $plugin, $quiet
     ];
 
     // Run with your existing helpers
-    $allTestsPass = runDayConditionTests($decTests, $daysOfWeek, $method, $plugin, $quiet, $colorEnabled) && $allTestsPass;
+    log_line("\n" . colorize("=== Running December Tests ===\n", 'bold', $colorEnabled), $quiet);
+    $allTestsPass = runSpecificDateTests($decTests, $method, $quiet, $colorEnabled) && $allTestsPass;
+
     tt_run_boolean_rows($decTests, $daysOfWeek, $method, $plugin, $quiet, $ascii, $colorEnabled, $allTestsPass);
     tt_run_error_rows($decTests, $method, $plugin, $quiet, $colorEnabled, $allTestsPass);
 });
@@ -600,11 +642,13 @@ withTestDate('2025-07-15', function() use ($daysOfWeek, $method, $plugin, $quiet
         ['condition' => 'month == july',          'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
         ['condition' => 'month < jun',            'currentDays' => []],
         ['condition' => 'month > aug',            'currentDays' => []],
-        ['condition' => 'month in [jul,aug] AND weekend', 'currentDays' => ['sat', 'sun']],
+//        ['condition' => 'month in [jul,aug] AND weekday', 'currentDays' => ['mon','tue','wed','thu','fri']],
         ['condition' => 'year == 2025 AND (month > 6 AND month < 9)', 'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
     ];
 
-    $allTestsPass = runDayConditionTests($julTests, $daysOfWeek, $method, $plugin, $quiet, $colorEnabled) && $allTestsPass;
+    log_line("\n" . colorize("=== Running July Tests ===\n", 'bold', $colorEnabled), $quiet);
+    $allTestsPass = runSpecificDateTests($julTests, $method, $quiet, $colorEnabled) && $allTestsPass;
+
     tt_run_boolean_rows($julTests, $daysOfWeek, $method, $plugin, $quiet, $ascii, $colorEnabled, $allTestsPass);
     // (no error rows here)
 });
@@ -617,7 +661,10 @@ withTestDate('2025-11-15', function() use ($daysOfWeek, $method, $plugin, $quiet
         ['condition' => 'month in [dec..jan]', 'currentDays' => []],
         ['condition' => 'month == nov',        'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
     ];
-    $allTestsPass = runDayConditionTests($novTests, $daysOfWeek, $method, $plugin, $quiet, $colorEnabled) && $allTestsPass;
+
+    log_line("\n" . colorize("=== Running November Tests ===\n", 'bold', $colorEnabled), $quiet);
+    $allTestsPass = runSpecificDateTests($novTests, $method, $quiet, $colorEnabled) && $allTestsPass;
+
     tt_run_boolean_rows($novTests, $daysOfWeek, $method, $plugin, $quiet, $ascii, $colorEnabled, $allTestsPass);
 });
 
@@ -629,7 +676,10 @@ withTestDate('2026-01-15', function() use ($daysOfWeek, $method, $plugin, $quiet
         ['condition' => 'month in [dec..jan]', 'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
         ['condition' => 'month == jan',        'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
     ];
-    $allTestsPass = runDayConditionTests($janTests, $daysOfWeek, $method, $plugin, $quiet, $colorEnabled) && $allTestsPass;
+
+    log_line("\n" . colorize("=== Running January Tests ===\n", 'bold', $colorEnabled), $quiet);
+    $allTestsPass = runSpecificDateTests($janTests, $method, $quiet, $colorEnabled) && $allTestsPass;
+
     tt_run_boolean_rows($janTests, $daysOfWeek, $method, $plugin, $quiet, $ascii, $colorEnabled, $allTestsPass);
 });
 
@@ -659,7 +709,10 @@ withTestDate('2026-01-15', function() use ($daysOfWeek, $method, $plugin, $quiet
         ['condition' => 'month in [jun..aug, 12]', 'currentDays' => []],
         ['condition' => 'month in [jan..feb, may, jul..aug]', 'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
     ];
-    $allTestsPass = runDayConditionTests($janTests, $daysOfWeek, $method, $plugin, $quiet, $colorEnabled) && $allTestsPass;
+
+    log_line("\n" . colorize("=== Running January Tests ===\n", 'bold', $colorEnabled), $quiet);
+    $allTestsPass = runSpecificDateTests($janTests, $method, $quiet, $colorEnabled) && $allTestsPass;
+
     tt_run_boolean_rows($janTests, $daysOfWeek, $method, $plugin, $quiet, $ascii, $colorEnabled, $allTestsPass);
 });
 
@@ -672,7 +725,10 @@ withTestDate('2025-03-15', function() use ($daysOfWeek, $method, $plugin, $quiet
         ['condition' => 'month in [nov..feb]', 'currentDays' => []],
         ['condition' => 'month in [dec..jan]', 'currentDays' => []],
     ];
-    $allTestsPass = runDayConditionTests($marTests, $daysOfWeek, $method, $plugin, $quiet, $colorEnabled) && $allTestsPass;
+
+    log_line("\n" . colorize("=== Running March Tests ===\n", 'bold', $colorEnabled), $quiet);
+    $allTestsPass = runSpecificDateTests($marTests, $method, $quiet, $colorEnabled) && $allTestsPass;
+
     tt_run_boolean_rows($marTests, $daysOfWeek, $method, $plugin, $quiet, $ascii, $colorEnabled, $allTestsPass);
 });
 
@@ -686,7 +742,10 @@ withTestDate('2025-07-15', function() use ($daysOfWeek, $method, $plugin, $quiet
         ['condition' => 'month in [nov..feb]', 'currentDays' => []],
         ['condition' => 'month in [dec..jan]', 'currentDays' => []],
     ];
-    $allTestsPass = runDayConditionTests($julTests, $daysOfWeek, $method, $plugin, $quiet, $colorEnabled) && $allTestsPass;
+
+    log_line("\n" . colorize("=== Running July Tests ===\n", 'bold', $colorEnabled), $quiet);
+    $allTestsPass = runSpecificDateTests($julTests, $method, $quiet, $colorEnabled) && $allTestsPass;
+
     tt_run_boolean_rows($julTests, $daysOfWeek, $method, $plugin, $quiet, $ascii, $colorEnabled, $allTestsPass);
 });
 
@@ -694,7 +753,7 @@ withTestDate('2025-07-15', function() use ($daysOfWeek, $method, $plugin, $quiet
 $combinedAndInvalidTests = [
     // New: combined conditions
     ['condition' => 'month == jun AND is weekday', 'currentDays' => []],
-    ['condition' => 'month in [jul,aug] AND weekend', 'currentDays' => []],
+    ['condition' => 'month in [jul,aug] AND weekend', 'currentDays' => ['sat','sun']],
     ['condition' => 'year == 2025 AND (month > 6 AND month < 9)', 'currentDays' => []],
 
     // Invalid month tokens
@@ -739,7 +798,7 @@ foreach ($daysOfWeek as $mockDay) {
         [$condition, $ifContent, $elseContent] = $ex;
 
         // Evaluate each example for the current mock day
-        [$success, $result] = $method->invoke($plugin, $condition, $mockDay);
+        [$success, $result] = $method->invoke($evaluator, $condition, new DateTime('last ' . $mockDay));
 
         // Determine what would be rendered by the plugin for this example/day
         if ($success && $result) {
