@@ -487,9 +487,22 @@ class syntax_plugin_ifday extends DokuWiki_Syntax_Plugin {
                 foreach ($items as $it) {
                     if (strpos($it, '..') !== false) {
                         [$start, $end] = explode('..', $it);
+
+                        // Handle incomplete ranges, but also return a token for the correct error message
+                        if ($start === '' || $end === '') {
+                            return '__INCOMPLETE_RANGE__';
+                        }
+
                         $rangeMonths = $this->expandMonthRange($start, $end);
                         if ($rangeMonths === null) {
-                            return '__INVALID_MONTH__:' . $it;
+                            // Correctly identifies and returns the specific invalid token
+                            $invalidToken = null;
+                            if (!isset($monthMap[$start]) && !ctype_digit($start)) {
+                                $invalidToken = $start;
+                            } else if (!isset($monthMap[$end]) && !ctype_digit($end)) {
+                                $invalidToken = $end;
+                            }
+                            return '__INVALID_MONTH__:' . ($invalidToken ?: $it);
                         }
                         $targets = array_merge($targets, $rangeMonths);
                     } else {
@@ -513,6 +526,13 @@ class syntax_plugin_ifday extends DokuWiki_Syntax_Plugin {
         if (strpos($cond, '__INVALID_MONTH__') !== false) {
             preg_match_all('/__INVALID_MONTH__:(\w+)/', $cond, $bad);
             $msg = 'Invalid month name(s) in condition: ' . implode(', ', $bad[1]);
+            return [false, $msg];
+        }
+
+        // Detect general syntax errors (e.g., incomplete ranges)
+        if (strpos($cond, '__INCOMPLETE_RANGE__') !== false) {
+            $msg = 'Eval failed: syntax error, incomplete range in condition.';
+            dbglog("ifday: $msg");
             return [false, $msg];
         }
 
