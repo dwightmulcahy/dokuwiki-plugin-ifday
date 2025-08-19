@@ -19,6 +19,7 @@ It supports:
 - `<else>` block support for `false` condition processing
 - Relative offsets: `day+N`, `day-N` (e.g., `day+3` means three days from today)
 - Month checks: `month == december`, `month in [jun,jul,aug]`
+- Ranges: `day in [mon..wed]`, `month in [dec..feb]`
 - Year checks: `year == 2025`
 - Configurable option to show/hide inline error messages on the wiki page for invalid conditions
 
@@ -52,9 +53,9 @@ This content appears only today.
 <ifday month == december>
 This content appears only in December.
 </ifday>
-```
+````
 
----
+-----
 
 ## `<else>` Block
 
@@ -88,9 +89,10 @@ Using the `<else>` block.
 </ifday>
 ```
 
----
+-----
 
 ## Comparison Operators
+
 You can compare `day`, `weekday`, and `weekend` using:
 
 | Operator             | Meaning                                  | Example                              |
@@ -107,9 +109,10 @@ This content appears on all weekdays except weekends.
 </ifday>
 ```
 
----
+-----
 
 ## Logical Operators, Negation, and Grouping
+
 Combine conditions with:
 
 - `AND` or `&&` (logical AND)
@@ -127,11 +130,16 @@ Content is visible only on weekends.
 <ifday (weekday AND day != friday) OR weekend>
 Content is visible if today is a weekday except Friday, or if it is the weekend.
 </ifday>
+
+<ifday (day in [mon..wed]) AND (month in [dec..feb])>
+Visible on Monday, Tuesday, or Wednesday only during the winter.
+</ifday>
 ```
 
----
+-----
 
 ## Boolean Checks Without Explicit Comparisons
+
 Simply using `weekday`, `weekend`, or day name (`monday`, `tuesday`, etc.) without a comparison will evaluate to true or false automatically:
 
 ```dokuwiki
@@ -152,9 +160,10 @@ Only visible today.
 </ifday>
 ```
 
----
+-----
 
 ## Day Name and Abbreviation Checks
+
 You can check for specific days using full names or 3-letter abbreviations (case-insensitive):
 
 ```dokuwiki
@@ -175,7 +184,8 @@ Visible on Thursday only.
 </ifday>
 ```
 
----
+-----
+
 ## Shorthand Day-Only Syntax
 
 You can simplify conditions that check for a specific day by omitting the full comparison syntax.
@@ -196,9 +206,48 @@ Content visible only on Mondays (using 3-letter abbreviation).
 </ifday>
 ```
 
----
+-----
+
+## Day and Month Ranges
+
+You can check if the current day or month falls within a specific range using the `in [...]` syntax. You can use full names, abbreviations, or numbers, and you can combine single items and ranges in a comma-separated list.
+
+### Day Range Examples
+
+```dokuwiki
+<ifday day in [mon..fri]>
+This content is visible on any weekday.
+</ifday>
+
+<ifday day in [sat..tue]>
+This is a wrap-around range, visible on Saturday, Sunday, Monday, and Tuesday.
+</ifday>
+
+<ifday day in [mon, wed, fri]>
+This is visible on Monday, Wednesday, or Friday.
+</ifday>
+```
+
+### Month Range Examples
+
+```dokuwiki
+<ifday month in [jan..mar]>
+This is visible during the first quarter of the year.
+</ifday>
+
+<ifday month in [dec..feb]>
+This is a wrap-around range for winter months.
+</ifday>
+
+<ifday month in [may, jun, jul..sep]>
+This is visible in May, June, and the third quarter of the year.
+</ifday>
+```
+
+-----
 
 ## Mixed Conditions
+
 Combine day names and `weekday`/`weekend` status:
 
 ```dokuwiki
@@ -210,11 +259,11 @@ Visible only on Monday or Wednesday during the weekdays.
 Visible on Saturdays only.
 </ifday>
 
-<ifday (month == december AND workday)>
-Visible on weekdays in December only.
+<ifday (month in [dec..feb] AND workday)>
+Visible on weekdays during winter.
 </ifday>
 
-<ifday (year == 2025 AND weekend)>
+<ifday (year == 2025 AND day in [sat, sun])>
 Visible on weekends in the year 2025.
 </ifday>
 
@@ -227,11 +276,12 @@ Visible if yesterday was a weekday.
 </ifday>
 ```
 
----
+-----
 
 ## Tier 1 Additions Usage Examples
 
 ### Relative-Day Keywords (with useful comparisons)
+
 ```dokuwiki
 <ifday (tomorrow AND weekday)>
 This content appears if tomorrow is a weekday.
@@ -251,6 +301,7 @@ This content appears if yesterday was Monday.
 ```
 
 ### Relative Offsets
+
 ```dokuwiki
 <ifday day+3>
 This content shows if three days from today is the current day.
@@ -262,6 +313,7 @@ This content shows if yesterday matches.
 ```
 
 ### Month Checks
+
 ```dokuwiki
 <ifday month == december>
 Holiday specials appear only in December.
@@ -273,6 +325,7 @@ Summer content (June, July, August).
 ```
 
 ### Year Checks
+
 ```dokuwiki
 <ifday year == 2025>
 This content is only shown during 2025.
@@ -280,6 +333,7 @@ This content is only shown during 2025.
 ```
 
 ### Workday / Businessday Aliases
+
 ```dokuwiki
 <ifday workday>
 Visible only on weekdays (Mon–Fri).
@@ -290,9 +344,10 @@ Visible only on weekends.
 </ifday>
 ```
 
----
+-----
 
 ## Error Handling and Configuration
+
 - If your condition expression is invalid or unsafe, the plugin logs an error and, by default, **displays a visible warning box** on the page showing the error message and the original condition.
 - This visible error display can be toggled on/off in the plugin configuration (`show_errors` option) via the DokuWiki admin interface.
 - When disabled, errors will be logged silently without showing messages on the wiki pages.
@@ -306,7 +361,7 @@ Example error message style:
 </div>
 ```
 
----
+-----
 
 ## Summary of Supported Syntax
 
@@ -322,13 +377,16 @@ Example error message style:
 | Grouping            | `(weekday AND day != friday) OR weekend`                 | Use parentheses for complex logic                |
 | Day Abbreviations   | `day == mon`, `day is tue`                               | Supports 3-letter abbreviations for days         |
 | Relative Keywords   | `(tomorrow AND day == friday)`, `(yesterday AND weekday)` | Relative-day checks with comparisons             |
-| Month Checks        | `month == december`, `month in [jun,jul,aug]`            | Checks based on calendar month                   |
+| Day Ranges          | `day in [mon..fri]`, `day in [sat, sun, mon]`            | Checks if current day is in a list or range      |
+| Month Checks        | `month == december`, `month in [jun..aug]`               | Checks based on calendar month                   |
+| Month Ranges        | `month in [1..3]`, `month in [nov..jan, mar]`            | Checks if current month is in a list or range    |
 | Year Checks         | `year == 2025`                                           | Checks based on year                             |
 | Workday Aliases     | `workday`, `businessday`                                 | Alias for weekday (Mon–Fri)                      |
 
----
+-----
 
 ## Notes
+
 - The plugin evaluates conditions based on the **server’s current date** and time.
 - Logical operators (`AND`, `OR`, `NOT`) and comparison operators (`is`, `==`, `!=`) are **case-insensitive**.
 - Parentheses are supported for grouping and clarifying complex logic.
@@ -336,15 +394,17 @@ Example error message style:
 - The plugin currently does **not support time-of-day comparisons**, only day/month/year-based logic.
 - Day names and abbreviations are normalized internally to ensure flexible matching.
 
----
+-----
 
 ## Installation
-1. Extract the `ifday` folder into your DokuWiki `lib/plugins/` directory.
-2. Make sure the plugin is enabled (usually enabled by default).
-3. Use `<ifday>` tags with conditions in your wiki pages as described above.
-4. Configure error message visibility from **Admin → Configuration Settings → ifday → Show errors**.
 
----
+1.  Extract the `ifday` folder into your DokuWiki `lib/plugins/` directory.
+2.  Make sure the plugin is enabled (usually enabled by default).
+3.  Use `<ifday>` tags with conditions in your wiki pages as described above.
+4.  Configure error message visibility from **Admin → Configuration Settings → ifday → Show errors**.
+
+-----
 
 ## Support
+
 For questions or [issues](https://github.com/dwightmulcahy/dokuwiki-plugin-ifday/issues), please contact the plugin author or visit the [DokuWiki forums](https://forum.dokuwiki.org/).
