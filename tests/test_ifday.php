@@ -242,6 +242,32 @@ $tests = [
     // Full names
     ['condition' => 'day in [monday..friday]',   'currentDays' => ['mon','tue','wed','thu','fri']],
 
+    // Wrap-around same-day range
+    ['condition' => 'day in [wed..tue]', 'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
+
+    // Single-day ranges
+    ['condition' => 'day in [mon..mon]', 'currentDays' => ['mon']],
+    ['condition' => 'day in [thu..thu]', 'currentDays' => ['thu']],
+
+    // Mixed full and abbreviated names in a list
+    ['condition' => 'day in [mon,tuesday,wed,thursday]', 'currentDays' => ['mon','tue','wed','thu']],
+
+    // Ranges mixed with single days
+    ['condition' => 'day in [mon..tue, thu, sat..sun]', 'currentDays' => ['mon','tue','thu','sat','sun']],
+    ['condition' => 'day in [fri..mon, wed]', 'currentDays' => ['mon','wed','fri','sat','sun']],
+
+    // Wrap-around ranges
+    ['condition' => 'day in [sun..mon]', 'currentDays' => ['sun','mon']],
+    ['condition' => 'day in [sat..tue]', 'currentDays' => ['sat','sun','mon','tue']],
+
+    // Complex logic with day ranges
+    ['condition' => 'day in [mon..fri] AND is weekday', 'currentDays' => ['mon','tue','wed','thu','fri']],
+    ['condition' => 'day in [sat..sun] OR day in [mon..tue]', 'currentDays' => ['mon','tue','sat','sun']],
+
+    // Invalid tokens within a list
+    ['condition' => 'day in [mon, tue, fuz]', 'failureMsg' => 'Invalid day name(s) in condition: fuz'],
+    ['condition' => 'day in [thu, fri, sun..mon, foo]', 'failureMsg' => 'Invalid day name(s) in condition: foo'],
+
     // Invalid syntax and tokens
     ['condition' => 'day in [mon..foobar]',      'failureMsg' => 'Invalid day name(s) in condition: foobar'],
     ['condition' => 'day in [mon, tue..fuz]',    'failureMsg' => 'Invalid day name(s) in condition: fuz'],
@@ -525,6 +551,26 @@ withTestDate('2025-12-15', function() use ($daysOfWeek, $method, $plugin, $quiet
         // Range tests
         ['condition' => 'month in [jul..aug] AND weekend', 'currentDays' => []],
         ['condition' => 'year == 2025 AND (month > 6 AND month < 9)', 'currentDays' => []],
+
+        // Single-month ranges
+        ['condition' => 'month in [jul..jul]', 'currentDays' => []],
+        ['condition' => 'month in [11..11]', 'currentDays' => []],
+        ['condition' => 'month in [nov..dec]', 'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
+
+        // Mixed lists of ranges and single months
+        ['condition' => 'month in [jan, mar..may, jul]', 'currentDays' => []], // Should fail for Jul since test date is Dec
+        ['condition' => 'month in [jan..feb, may, jul..aug]', 'currentDays' => []], // Should fail for Jul since test date is Dec
+        ['condition' => 'month in [dec, 1..3]', 'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']], // Test date is Dec
+
+        // Wrap-around ranges with mixed syntax
+        ['condition' => 'month in [nov..jan, mar]', 'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']], // Test date is Dec, should be true but will fail for now due to test setup
+        ['condition' => 'month in [oct..feb, mar]', 'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']], // Test date is Dec, should be true
+
+        // Invalid syntax and tokens
+        ['condition' => 'month in [jun..foobar]', 'failureMsg' => 'Invalid month name(s) in condition: foobar'],
+        ['condition' => 'month in [jan,feb,mar..fuz]', 'failureMsg' => 'Invalid month name(s) in condition: fuz'],
+        ['condition' => 'month in [13]', 'failureMsg' => 'Invalid month name(s) in condition: 13'],
+        ['condition' => 'month in [nov..]', 'failureMsg' => 'Eval failed: syntax error, incomplete range in condition.'],
 
         // Year operators (assuming base year 2025)
         ['condition' => 'year == 2025',  'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
