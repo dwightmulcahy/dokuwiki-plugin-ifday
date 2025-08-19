@@ -357,7 +357,7 @@ class syntax_plugin_ifday extends DokuWiki_Syntax_Plugin {
             $cond
         );
 
-        // month IN [jun,jul,aug]  -> 1/0
+        // month IN [jun,jul,aug] or [nov..feb] -> 1/0
         $cond = preg_replace_callback(
             '/\bmonth\s+in\s*\[\s*([^\]]*?)\s*\]/i',
             function($m) use ($monthNum, $monthMap) {
@@ -365,18 +365,26 @@ class syntax_plugin_ifday extends DokuWiki_Syntax_Plugin {
                 $items   = preg_split('/\s*,\s*/', strtolower($listRaw), -1, PREG_SPLIT_NO_EMPTY) ?: [];
                 $targets = [];
                 foreach ($items as $it) {
-                    if ($it === '') continue;
-                    if (ctype_digit($it)) {
-                        $n = (int)$it;
-                        if ($n < 1 || $n > 12) return '__INVALID_MONTH__:' . $it;
-                        $targets[] = $n;
+                    if (strpos($it, '..') !== false) {
+                        [$start, $end] = explode('..', $it);
+                        $rangeMonths = $this->expandMonthRange($start, $end, $monthMap);
+                        if ($rangeMonths === null) {
+                            return '__INVALID_MONTH__:' . $it;
+                        }
+                        $targets = array_merge($targets, $rangeMonths);
                     } else {
-                        $n = $monthMap[$it] ?? null;
-                        if ($n === null) return '__INVALID_MONTH__:' . $it;
-                        $targets[] = $n;
+                        if (ctype_digit($it)) {
+                            $n = (int)$it;
+                            if ($n < 1 || $n > 12) return '__INVALID_MONTH__:' . $it;
+                            $targets[] = $n;
+                        } else {
+                            $n = $monthMap[$it] ?? null;
+                            if ($n === null) return '__INVALID_MONTH__:' . $it;
+                            $targets[] = $n;
+                        }
                     }
                 }
-                return in_array($monthNum, $targets, true) ? '1' : '0';
+                return in_array($monthNum, array_unique($targets), true) ? '1' : '0';
             },
             $cond
         );
@@ -445,10 +453,53 @@ class syntax_plugin_ifday extends DokuWiki_Syntax_Plugin {
     }
 
     /** Expand inclusive month range a..b, supporting wrap-around (e.g., nov..feb) */
-    private function expandMonthRange(int $a, int $b): array {
-        if ($a <= $b) return range($a, $b);
-        return array_merge(range($a, 12), range(1, $b));
+    // --- Month support (names or numbers) ---
+    private function expandMonthRange(string $start, string $end, array $monthMap): ?array
+    {
+        $start = strtolower($start);
+        $end = strtolower($end);
+
+        if (ctype_digit($start)) {
+            $startNum = (int)$start;
+            $startMonthName = array_search($startNum, $monthMap);
+            if ($startMonthName === false) return null;
+        } else {
+            $startNum = $monthMap[$start] ?? null;
+            if ($startNum === null) return null;
+        }
+
+        if (ctype_digit($end)) {
+            $endNum = (int)$end;
+            $endMonthName = array_search($endNum, $monthMap);
+            if ($endMonthName === false) return null;
+        } else {
+            $endNum = $monthMap[$end] ?? null;
+            if ($endNum === null) return null;
+        }
+
+        $result = [];
+        $current = $startNum;
+
+        if ($startNum <= $endNum) {
+            while ($current <= $endNum) {
+                $result[] = $current;
+                $current++;
+            }
+        } else { // Wrap-around case (e.g., Nov..Feb)
+            while ($current <= 12) {
+                $result[] = $current;
+                $current++;
+            }
+            $current = 1;
+            while ($current <= $endNum) {
+                $result[] = $current;
+                $current++;
+            }
+        }
+
+        return $result;
     }
+
 
     /**
      * Parse a month set like "jan..mar, 9, sep, 12" into an int[] of 1..12.

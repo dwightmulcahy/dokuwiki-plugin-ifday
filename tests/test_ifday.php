@@ -507,6 +507,10 @@ withTestDate('2025-12-15', function() use ($daysOfWeek, $method, $plugin, $quiet
         // Membership
         ['condition' => 'month in [jun,jul,aug]', 'currentDays' => []],
 
+        // Range tests
+        ['condition' => 'month in [jul..aug] AND weekend', 'currentDays' => []],
+        ['condition' => 'year == 2025 AND (month > 6 AND month < 9)', 'currentDays' => []],
+
         // Year operators (assuming base year 2025)
         ['condition' => 'year == 2025',  'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
         ['condition' => 'year != 1999',  'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
@@ -535,12 +539,112 @@ withTestDate('2025-07-15', function() use ($daysOfWeek, $method, $plugin, $quiet
         ['condition' => 'month == july',          'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
         ['condition' => 'month < jun',            'currentDays' => []],
         ['condition' => 'month > aug',            'currentDays' => []],
+        ['condition' => 'month in [jul,aug] AND weekend', 'currentDays' => ['sat', 'sun']],
+        ['condition' => 'year == 2025 AND (month > 6 AND month < 9)', 'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
     ];
 
     $allTestsPass = runDayConditionTests($julTests, $daysOfWeek, $method, $plugin, $quiet, $colorEnabled) && $allTestsPass;
     tt_run_boolean_rows($julTests, $daysOfWeek, $method, $plugin, $quiet, $ascii, $colorEnabled, $allTestsPass);
     // (no error rows here)
 });
+
+// 3) November snapshot (e.g., 2025-11-15) — to test wrap-around ranges
+withTestDate('2025-11-15', function() use ($daysOfWeek, $method, $plugin, $quiet, $ascii, $colorEnabled, &$allTestsPass) {
+    $novTests = [
+        ['condition' => 'month in [nov..feb]', 'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
+        ['condition' => 'month in [11..2]',    'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
+        ['condition' => 'month in [dec..jan]', 'currentDays' => []],
+        ['condition' => 'month == nov',        'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
+    ];
+    $allTestsPass = runDayConditionTests($novTests, $daysOfWeek, $method, $plugin, $quiet, $colorEnabled) && $allTestsPass;
+    tt_run_boolean_rows($novTests, $daysOfWeek, $method, $plugin, $quiet, $ascii, $colorEnabled, $allTestsPass);
+});
+
+// 4) January snapshot (e.g., 2026-01-15) — to test wrap-around ranges
+withTestDate('2026-01-15', function() use ($daysOfWeek, $method, $plugin, $quiet, $ascii, $colorEnabled, &$allTestsPass) {
+    $janTests = [
+        ['condition' => 'month in [nov..feb]', 'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
+        ['condition' => 'month in [11..2]',    'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
+        ['condition' => 'month in [dec..jan]', 'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
+        ['condition' => 'month == jan',        'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
+    ];
+    $allTestsPass = runDayConditionTests($janTests, $daysOfWeek, $method, $plugin, $quiet, $colorEnabled) && $allTestsPass;
+    tt_run_boolean_rows($janTests, $daysOfWeek, $method, $plugin, $quiet, $ascii, $colorEnabled, $allTestsPass);
+});
+
+// 5) Consolidated Parse-Error tests (do not need a specific date context)
+$errorTests = [
+    // Invalid month tokens
+    ['condition' => 'month == foo',            'failureMsg' => 'Invalid month name(s) in condition: foo'],
+    ['condition' => 'month >= 13',             'failureMsg' => 'Invalid month name(s) in condition: 13'],
+    ['condition' => 'month < 0',               'failureMsg' => 'Invalid month name(s) in condition: 0'],
+    ['condition' => 'month in [dec, bad]',     'failureMsg' => 'Invalid month name(s) in condition: bad'],
+    ['condition' => 'month in [jun..aug, 0]',  'failureMsg' => 'Invalid month name(s) in condition: 0'],
+    ['condition' => 'month in [jan..foo]',     'failureMsg' => 'Invalid month name(s) in condition: foo'],
+    ['condition' => 'month in [jun..]',        'failureMsg' => "Eval failed: syntax error, unexpected token '..', expecting ')'"],
+];
+
+// ---------- New Month/Year blocks ----------
+
+// 1) January snapshot (e.g., 2026-01-15) — to test wrap-around ranges
+withTestDate('2026-01-15', function() use ($daysOfWeek, $method, $plugin, $quiet, $ascii, $colorEnabled, &$allTestsPass) {
+    $janTests = [
+        ['condition' => 'month in [nov..feb]', 'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
+        ['condition' => 'month in [11..2]',    'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
+        ['condition' => 'month in [dec..jan]', 'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
+        ['condition' => 'month == jan',        'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
+        ['condition' => 'month in [jan,mar,may]', 'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
+        ['condition' => 'month in [mar..may]', 'currentDays' => []],
+        ['condition' => 'month in [jun..aug, 12]', 'currentDays' => []],
+        ['condition' => 'month in [jan..feb, may, jul..aug]', 'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
+    ];
+    $allTestsPass = runDayConditionTests($janTests, $daysOfWeek, $method, $plugin, $quiet, $colorEnabled) && $allTestsPass;
+    tt_run_boolean_rows($janTests, $daysOfWeek, $method, $plugin, $quiet, $ascii, $colorEnabled, $allTestsPass);
+});
+
+// 2) March snapshot (e.g., 2025-03-15)
+withTestDate('2025-03-15', function() use ($daysOfWeek, $method, $plugin, $quiet, $ascii, $colorEnabled, &$allTestsPass) {
+    $marTests = [
+        ['condition' => 'month in [mar..may]', 'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
+        ['condition' => 'month in [3..5]',     'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
+        ['condition' => 'month in [jan,mar,may]', 'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
+        ['condition' => 'month in [nov..feb]', 'currentDays' => []],
+        ['condition' => 'month in [dec..jan]', 'currentDays' => []],
+    ];
+    $allTestsPass = runDayConditionTests($marTests, $daysOfWeek, $method, $plugin, $quiet, $colorEnabled) && $allTestsPass;
+    tt_run_boolean_rows($marTests, $daysOfWeek, $method, $plugin, $quiet, $ascii, $colorEnabled, $allTestsPass);
+});
+
+// 3) July snapshot (e.g., 2025-07-15) — to see summer membership go TRUE
+withTestDate('2025-07-15', function() use ($daysOfWeek, $method, $plugin, $quiet, $ascii, $colorEnabled, &$allTestsPass) {
+    $julTests = [
+        ['condition' => 'month in [jun..aug]', 'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
+        ['condition' => 'month in [6..8]', 'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
+        ['condition' => 'month in [jun..aug, 12]', 'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
+        ['condition' => 'month in [jan..feb, may, jul..aug]', 'currentDays' => ['mon','tue','wed','thu','fri','sat','sun']],
+        ['condition' => 'month in [nov..feb]', 'currentDays' => []],
+        ['condition' => 'month in [dec..jan]', 'currentDays' => []],
+    ];
+    $allTestsPass = runDayConditionTests($julTests, $daysOfWeek, $method, $plugin, $quiet, $colorEnabled) && $allTestsPass;
+    tt_run_boolean_rows($julTests, $daysOfWeek, $method, $plugin, $quiet, $ascii, $colorEnabled, $allTestsPass);
+});
+
+// 4) Combined and invalid tests (not tied to a specific month)
+$combinedAndInvalidTests = [
+    // New: combined conditions
+    ['condition' => 'month == jun AND is weekday', 'currentDays' => []],
+    ['condition' => 'month in [jul,aug] AND weekend', 'currentDays' => []],
+    ['condition' => 'year == 2025 AND (month > 6 AND month < 9)', 'currentDays' => []],
+
+    // Invalid month tokens
+    ['condition' => 'month == foo',            'failureMsg' => 'Invalid month name(s) in condition: foo'],
+    ['condition' => 'month >= 13',             'failureMsg' => 'Invalid month name(s) in condition: 13'],
+    ['condition' => 'month < 0',               'failureMsg' => 'Invalid month name(s) in condition: 0'],
+    ['condition' => 'month in [dec, bad]',     'failureMsg' => 'Invalid month name(s) in condition: bad'],
+    ['condition' => 'month in [jun..aug, 0]',  'failureMsg' => 'Invalid month name(s) in condition: 0'],
+    ['condition' => 'month in [jan..foo]',     'failureMsg' => 'Invalid month name(s) in condition: foo'],
+    ['condition' => 'month in [jun..]',        'failureMsg' => "Eval failed: syntax error, unexpected token '..', expecting ')'"],
+];
 
 
 // =====================================================
