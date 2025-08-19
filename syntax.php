@@ -115,33 +115,110 @@ class syntax_plugin_ifday extends DokuWiki_Syntax_Plugin {
     }
 
     /**
-     * Evaluate the condition string and return a tuple [success, boolean result, or error message]
-     * Supports: day comparisons, "is"/"is not", NOT, AND/OR, weekday/weekend, shorthand day names.
-     *
-     * @param string $cond The condition expression string
-     * @param string|null $currentDay Optional: day name to override the current date (e.g., 'mon', 'tue')
-     * @return array [bool success, bool|string result or error message]
+     * @param string $start The starting day (e.g., 'mon' or 'monday').
+     * @param string $end   The ending day (e.g., 'fri' or 'friday').
+     * @param array  $dayMap The map of day abbreviations to full names.
+     * @return array|null An array of full day names (e.g., ['monday','tuesday']), or null on error.
      */
+    private function expandDayRange(string $start, string $end): ?array
+    {
+        // Day/abbr maps - define them here to avoid passing them as arguments
+        $days    = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
+        $dayAbbr = ['mon','tue','wed','thu','fri','sat','sun'];
+        $mapAbbr = array_combine($dayAbbr, $days);
+        $fullDayToIndex = array_combine($days, range(0, 6));
+
+        $start = strtolower($start);
+        $end = strtolower($end);
+
+        // Get the numeric index for the start and end days
+        $startIndex = $fullDayToIndex[$mapAbbr[$start] ?? $start] ?? null;
+        $endIndex = $fullDayToIndex[$mapAbbr[$end] ?? $end] ?? null;
+
+        if ($startIndex === null || $endIndex === null) {
+            return null;
+        }
+
+        $result = [];
+        $currentIndex = $startIndex;
+
+        // Loop to generate the range, handling wrap-around from Sunday to Monday
+        while (true) {
+            $result[] = $days[$currentIndex];
+            if ($currentIndex === $endIndex) {
+                break;
+            }
+            $currentIndex = ($currentIndex + 1) % 7;
+        }
+
+        return $result;
+    }
+
     /**
-     * Evaluate the condition string and return a tuple [success, boolean result, or error message]
-     * Supports: day comparisons, "is"/"is not", NOT, AND/OR, weekday/weekend, shorthand day names,
-     * explicit comparisons for today/tomorrow/yesterday, day±N offsets, and year equality/inequality.
-     *
-     * @param string $cond The condition expression string
-     * @param string|null $currentDay Optional: day name to override the current date (e.g., 'mon', 'tue')
-     * @return array [bool success, bool|string result or error message]
+     * @param string $start The starting month (e.g., 'jan' or '1').
+     * @param string $end   The ending month (e.g., 'feb' or '2').
+     * @return array|null An array of month numbers, or null on error.
      */
+    private function expandMonthRange(string $start, string $end): ?array
+    {
+        // Month map
+        $monthMap = [
+            'jan'=>1,'january'=>1,'feb'=>2,'february'=>2,'mar'=>3,'march'=>3,
+            'apr'=>4,'april'=>4,'may'=>5,'jun'=>6,'june'=>6,'jul'=>7,'july'=>7,
+            'aug'=>8,'august'=>8,'sep'=>9,'sept'=>9,'september'=>9,'oct'=>10,'october'=>10,
+            'nov'=>11,'november'=>11,'dec'=>12,'december'=>12
+        ];
+
+        $start = strtolower($start);
+        $end = strtolower($end);
+
+        if (ctype_digit($start)) {
+            $startNum = (int)$start;
+            if ($startNum < 1 || $startNum > 12) return null;
+        } else {
+            $startNum = $monthMap[$start] ?? null;
+            if ($startNum === null) return null;
+        }
+
+        if (ctype_digit($end)) {
+            $endNum = (int)$end;
+            if ($endNum < 1 || $endNum > 12) return null;
+        } else {
+            $endNum = $monthMap[$end] ?? null;
+            if ($endNum === null) return null;
+        }
+
+        $result = [];
+        $current = $startNum;
+
+        if ($startNum <= $endNum) {
+            while ($current <= $endNum) {
+                $result[] = $current;
+                $current++;
+            }
+        } else { // Wrap-around case (e.g., Nov..Feb)
+            while ($current <= 12) {
+                $result[] = $current;
+                $current++;
+            }
+            $current = 1;
+            while ($current <= $endNum) {
+                $result[] = $current;
+                $current++;
+            }
+        }
+
+        return $result;
+    }
+
     /**
-     * Evaluate an ifday condition string against the plugin's current clock.
-     * - Supports: day/today/tomorrow/yesterday, weekday/weekend, workday/businessday,
-     *             ==, !=, <, <=, >, >=, parentheses, AND/OR/NOT/&&/||/!,
-     *             day±N == <day>, day in [..], month comparisons, and
-     *             month in [<ranges and/or tokens>]  ← (NEW: robust implementation)
-     *
-     * On invalid input, throws \InvalidArgumentException with the exact messages
-     * your tests expect (e.g., "Invalid month name(s) in condition: bad").
+     * The main function to evaluate a boolean condition based on the current date/time.
+     * @param string $cond The boolean condition string.
+     * @param string|null $currentDay A specific day to test against (e.g., 'mon').
+     * @return array [bool success, string|bool result]
      */
-    private function evaluateCondition(string $cond, ?string $currentDay = null): array {
+    private function evaluateCondition(string $cond, ?string $currentDay = null): array
+    {
         // Determine the base date to use (allows deterministic testing)
         $dowMap = ['mon'=>0,'tue'=>1,'wed'=>2,'thu'=>3,'fri'=>4,'sat'=>5,'sun'=>6];
         $envDate = getenv('IFDAY_TEST_DATE') ?: null;
@@ -271,11 +348,54 @@ class syntax_plugin_ifday extends DokuWiki_Syntax_Plugin {
             $cond
         );
 
+        // day IN [mon,tue,fri..sun] -> 1/0
+        $cond = preg_replace_callback(
+            '/\bday\s+in\s*\[\s*([^\]]*?)\s*\]/i',
+            function($m) use ($dayName, $mapAbbr, $days) {
+                $listRaw = $m[1];
+                $items = preg_split('/\s*,\s*/', strtolower($listRaw), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+                $targets = [];
+                foreach ($items as $it) {
+                    if (strpos($it, '..') !== false) {
+                        [$start, $end] = explode('..', $it);
+
+                        // Check for incomplete ranges like 'mon..' or '..tue'
+                        if ($start === '' || $end === '') {
+                            return '__SYNTAX_ERROR__';
+                        }
+
+                        $rangeDays = $this->expandDayRange($start, $end);
+                        if ($rangeDays === null) {
+                            // Correctly returns the specific invalid token from the range
+                            $invalidToken = in_array($start, array_keys($mapAbbr)) || in_array($start, $days) ? $end : $start;
+                            return '__INVALID_DAY__:' . $invalidToken;
+                        }
+                        $targets = array_merge($targets, $rangeDays);
+                    } else {
+                        $fullDay = $mapAbbr[$it] ?? $it;
+                        if (!in_array($fullDay, $days, true)) {
+                            return '__INVALID_DAY__:' . $it;
+                        }
+                        $targets[] = $fullDay;
+                    }
+                }
+                return in_array($dayName, array_unique($targets), true) ? '1' : '0';
+            },
+            $cond
+        );
+
         // Detect invalid day tokens (from any of the conversions above)
         if (strpos($cond, '__INVALID_DAY__') !== false) {
             preg_match_all('/__INVALID_DAY__:(\w+)/', $cond, $invalidDays);
             $invalidList = implode(', ', $invalidDays[1]);
             $msg = "Invalid day name(s) in condition: $invalidList";
+            dbglog("ifday: $msg");
+            return [false, $msg];
+        }
+
+        // Detect general syntax errors (e.g., incomplete ranges)
+        if (strpos($cond, '__SYNTAX_ERROR__') !== false) {
+            $msg = "Eval failed: syntax error, incomplete range in condition.";
             dbglog("ifday: $msg");
             return [false, $msg];
         }
@@ -367,7 +487,7 @@ class syntax_plugin_ifday extends DokuWiki_Syntax_Plugin {
                 foreach ($items as $it) {
                     if (strpos($it, '..') !== false) {
                         [$start, $end] = explode('..', $it);
-                        $rangeMonths = $this->expandMonthRange($start, $end, $monthMap);
+                        $rangeMonths = $this->expandMonthRange($start, $end);
                         if ($rangeMonths === null) {
                             return '__INVALID_MONTH__:' . $it;
                         }
@@ -451,55 +571,6 @@ class syntax_plugin_ifday extends DokuWiki_Syntax_Plugin {
         // IMPORTANT: message must be ONLY the offending token; caller wraps it.
         throw new \InvalidArgumentException($t);
     }
-
-    /** Expand inclusive month range a..b, supporting wrap-around (e.g., nov..feb) */
-    // --- Month support (names or numbers) ---
-    private function expandMonthRange(string $start, string $end, array $monthMap): ?array
-    {
-        $start = strtolower($start);
-        $end = strtolower($end);
-
-        if (ctype_digit($start)) {
-            $startNum = (int)$start;
-            $startMonthName = array_search($startNum, $monthMap);
-            if ($startMonthName === false) return null;
-        } else {
-            $startNum = $monthMap[$start] ?? null;
-            if ($startNum === null) return null;
-        }
-
-        if (ctype_digit($end)) {
-            $endNum = (int)$end;
-            $endMonthName = array_search($endNum, $monthMap);
-            if ($endMonthName === false) return null;
-        } else {
-            $endNum = $monthMap[$end] ?? null;
-            if ($endNum === null) return null;
-        }
-
-        $result = [];
-        $current = $startNum;
-
-        if ($startNum <= $endNum) {
-            while ($current <= $endNum) {
-                $result[] = $current;
-                $current++;
-            }
-        } else { // Wrap-around case (e.g., Nov..Feb)
-            while ($current <= 12) {
-                $result[] = $current;
-                $current++;
-            }
-            $current = 1;
-            while ($current <= $endNum) {
-                $result[] = $current;
-                $current++;
-            }
-        }
-
-        return $result;
-    }
-
 
     /**
      * Parse a month set like "jan..mar, 9, sep, 12" into an int[] of 1..12.

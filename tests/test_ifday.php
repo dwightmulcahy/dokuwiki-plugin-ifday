@@ -216,9 +216,6 @@ $tests = [
     ['condition' => 'is weekday AND (day+1 == sat)',  'currentDays' => ['fri']],
     ['condition' => 'is weekend AND (day-1 == fri)',  'currentDays' => ['sat']],
 
-    // invalid tokens
-    ['condition' => 'day in [mon,tue]', 'failureMsg' => "Safety check failed for processed condition 'day in [mon,tue]'"],
-
     /* Aliases & business-day synonyms */
     ['condition' => 'is workday',                    'currentDays' => ['mon','tue','wed','thu','fri']],
     ['condition' => 'is not businessday',            'currentDays' => ['sat','sun']],
@@ -230,6 +227,25 @@ $tests = [
     ['condition' => 'today is fri OR today is sat AND weekend',          'currentDays' => ['fri','sat']],
     ['condition' => 'day == mon OR tomorrow is tue AND weekend',         'currentDays' => ['mon']], // rhs never true
 
+    // --- NEW DAY RANGE TESTS ---
+    ['condition' => 'day in [mon..fri]',         'currentDays' => ['mon','tue','wed','thu','fri']],
+    ['condition' => 'day in [wed..fri]',         'currentDays' => ['wed','thu','fri']],
+    ['condition' => 'day in [sat..sun]',         'currentDays' => ['sat','sun']],
+
+    // Wrap-around ranges
+    ['condition' => 'day in [sat..mon]',         'currentDays' => ['sat','sun','mon']],
+    ['condition' => 'day in [sun..tue]',         'currentDays' => ['sun','mon','tue']],
+
+    // Mixed syntax
+    ['condition' => 'day in [mon..tue, thu, sat..sun]', 'currentDays' => ['mon','tue','thu','sat','sun']],
+
+    // Full names
+    ['condition' => 'day in [monday..friday]',   'currentDays' => ['mon','tue','wed','thu','fri']],
+
+    // Invalid syntax and tokens
+    ['condition' => 'day in [mon..foobar]',      'failureMsg' => 'Invalid day name(s) in condition: foobar'],
+    ['condition' => 'day in [mon, tue..fuz]',    'failureMsg' => 'Invalid day name(s) in condition: fuz'],
+    ['condition' => 'day in [mon..]',            'failureMsg' => 'Eval failed: syntax error, incomplete range in condition.'],
 
     // -----------------------------
     // invalid / parse-error expectations
@@ -255,7 +271,6 @@ $tests = [
     ['condition' => 'is not fri',           'failureMsg' => "Safety check failed for processed condition 'is ! fri'"],
     ['condition' => 'day < tue',            'failureMsg' => "Safety check failed for processed condition 'day < tue'"],
     ['condition' => 'today is',             'failureMsg' => "Safety check failed for processed condition 'today is'"],
-    ['condition' => 'day in [mon,tue]',     'failureMsg' => "Safety check failed for processed condition 'day in [mon,tue]'"],
     ['condition' => '((day == mon))foo',    'failureMsg' => "Safety check failed for processed condition '((1))foo'"],
 ];
 
