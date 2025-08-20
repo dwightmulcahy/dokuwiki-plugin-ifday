@@ -43,7 +43,7 @@ jobs:
           echo "Listing tests dir for sanity:"
           ls -la tests || true
           echo "Running tests..."
-          php tests/test_ifday.php |& tee "test-output-${{ matrix.php }}.log"
+          php tests/run.php |& tee "test-output-${{ matrix.php }}.log"
 
       # If the job fails, upload the full output so it’s easy to debug from the PR.
       - name: Upload test logs on failure
