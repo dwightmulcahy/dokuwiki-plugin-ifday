@@ -44,6 +44,24 @@ class Ifday_ConditionEvaluator {
         return [true, p_render('xhtml', p_get_instructions($content), $info), null];
     }
 
+    private function normalizeBracketLists(string $expr): string {
+        // 1) Tighten spaces around '[' and ']'
+        $expr = preg_replace('/\[\s+/', '[', $expr);
+        $expr = preg_replace('/\s+\]/', ']', $expr);
+
+        // 2) Inside any single [...] segment, normalize "a .. b" -> "a..b", and "a , b" -> "a,b"
+        //    This keeps commas and '..' semantics but ignores user spacing.
+        $expr = preg_replace_callback('/\[[^\[\]]*\]/', function ($m) {
+            $inner = substr($m[0], 1, -1);              // strip brackets
+            $inner = preg_replace('/\s*\.\.\s*/', '..', $inner); // spaces around '..'
+            $inner = preg_replace('/\s*,\s*/', ',', $inner);     // spaces around ','
+            $inner = trim($inner);
+            return '[' . $inner . ']';
+        }, $expr);
+
+        return $expr;
+    }
+
     /**
      * Main function to evaluate a boolean condition based on the current date/time.
      *
@@ -66,6 +84,9 @@ class Ifday_ConditionEvaluator {
         // The rest of the code remains the same as before
         $cond = trim(preg_replace('/\s+/', ' ', $cond));
         $cond = str_replace(['"', '\''], '', $cond);
+
+        // Tolerate spaces in [ ... ] lists/ranges
+        $cond = $this->normalizeBracketLists($cond);
 
         // Process conditions in a specific order of precedence
         $cond = $this->processShorthand($cond);
