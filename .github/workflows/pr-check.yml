@@ -15,7 +15,7 @@ concurrency:
 
 permissions:
   contents: read       # Required so the action can read repo contents if needed
-  pull-requests: read
+  pull-requests: write
   statuses: write
 
 # ====================================
@@ -26,7 +26,7 @@ jobs:
   # 1) Validate Conventional Commits (child workflow A)
   conventional-commits:
     name: Validate Conventional Commits
-    uses: ./.github/workflows/verify_conversional_commits.yml
+    uses: ./.github/workflows/verify-conventional-commits.yml
     secrets: inherit
 
   # 2) ifday plugin tests (child workflow B) – runs only after A

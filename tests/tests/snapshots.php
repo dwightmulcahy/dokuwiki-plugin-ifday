@@ -77,6 +77,112 @@ return [
         ]
     ],
 
+    // === Ordinal/Last Weekday tests ===
+
+    [
+        'date' => '2025-02-14', // Monday, week of 2025-02-10..16
+        'name' => 'Week of February 14, 2025',
+        'tests' => [
+            ['condition' => '2nd monday',   'currentDays' => ['mon']],
+            ['condition' => '2nd mon',      'currentDays' => ['mon']],
+            ['condition' => 'last friday',  'currentDays' => []],      // last Friday (Feb 28) is not in this week
+            ['condition' => 'last fri',     'currentDays' => []],      // last Friday (Feb 28) is not in this week
+            ['condition' => '5th monday',   'currentDays' => []],      // Feb 2025 has only 4 Mondays
+            ['condition' => '5th mon',      'currentDays' => []],      // Feb 2025 has only 4 Mondays
+        ]
+    ],
+
+    [
+        'date' => '2025-02-28', // Monday, week of 2025-02-24..03-02
+        'name' => 'Week of February 28, 2025',
+        'tests' => [
+            ['condition' => 'last friday',  'currentDays' => ['fri']],
+            ['condition' => 'last fri',     'currentDays' => ['fri']],
+            ['condition' => 'last monday',  'currentDays' => ['mon']],
+            ['condition' => 'last mon',     'currentDays' => ['mon']],
+         ]
+    ],
+
+    [
+        /* March 2025 has five Mondays */
+        'date' => '2025-03-31', // Monday, week of 2025-03-31..04-06
+        'name' => 'Week of March 31, 2025',
+        'tests' => [
+            ['condition' => '5th monday',   'currentDays' => ['mon']],
+            ['condition' => '5th mon',      'currentDays' => ['mon']],
+            ['condition' => 'last monday',  'currentDays' => ['mon']],
+            ['condition' => 'last mon',     'currentDays' => ['mon']],
+            ['condition' => '5th friday',   'currentDays' => []],      // March 2025 has only 4 Fridays
+            ['condition' => '5th fri',      'currentDays' => []],
+        ]
+    ],
+
+    [
+        /* November 2025 has five Saturdays */
+        'date' => '2025-11-29', // Monday, week of 2025-11-24..11-30
+        'name' => 'Week of November 29, 2025',
+        'tests' => [
+            ['condition' => 'last saturday',    'currentDays' => ['sat']],
+            ['condition' => 'last sat',         'currentDays' => ['sat']],
+            ['condition' => '5th saturday',     'currentDays' => ['sat']],
+            ['condition' => '5th sat',          'currentDays' => ['sat']],
+        ]
+    ],
+
+    [
+        /* January 2026 has five Fridays */
+        'date' => '2026-01-30', // Monday, week of 2026-01-26..02-01
+        'name' => 'Week of January 30, 2026',
+        'tests' => [
+            ['condition' => '5th friday',   'currentDays' => ['fri']],
+            ['condition' => '5th fri',      'currentDays' => ['fri']],
+            ['condition' => 'last friday',  'currentDays' => ['fri']],
+            ['condition' => 'last fri',     'currentDays' => ['fri']],
+        ]
+    ],
+
+    [
+        'date' => '2025-07-10', // Monday, week of 2025-07-07..07-13
+        'name' => 'Week of July 10, 2025',
+        'tests' => [
+            ['condition' => '2nd thursday', 'currentDays' => ['thu']],
+            ['condition' => '2nd thu',      'currentDays' => ['thu']],
+        ]
+    ],
+
+    [
+        'date' => '2025-07-31', // Monday, week of 2025-07-28..08-03
+        'name' => 'Week of July 31, 2025',
+        'tests' => [
+            ['condition' => 'last thursday',    'currentDays' => ['thu']],
+            ['condition' => 'last thu',         'currentDays' => ['thu']],
+            ['condition' => '5th thursday',     'currentDays' => ['thu']],
+            ['condition' => '5th thu',          'currentDays' => ['thu']],
+        ]
+    ],
+
+    [
+        'date' => '2025-12-15', // Monday, week of 2025-12-15..12-21
+        'name' => 'Week of December 15, 2025',
+        'tests' => [
+            ['condition' => '3rd monday',   'currentDays' => ['mon']],
+            ['condition' => '3rd mon',      'currentDays' => ['mon']],
+        ]
+    ],
+
+    [
+        'date' => '2025-03-31', // Monday, week of 2025-03-31..04-06
+        'name' => 'Week of March 31, 2025',
+        'tests' => [
+            ['condition' => '5th monday',   'currentDays' => ['mon']],
+            ['condition' => '5th mon',      'currentDays' => ['mon']],
+            ['condition' => 'last monday',  'currentDays' => ['mon']],
+            ['condition' => 'last mon',     'currentDays' => ['mon']],
+            ['condition' => '5th friday',   'currentDays' => []],    // March 2025 has only 4 Fridays
+            ['condition' => '5th fri',      'currentDays' => []],
+        ]
+    ],
+
     [
         'date' => '2025-07-15', // Tuesday
         'name' => 'July 2025 (A)',

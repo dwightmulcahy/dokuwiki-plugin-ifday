@@ -4,18 +4,22 @@ on:
   workflow_call: {}   # This workflow is reusable and will only run when called by another workflow via "uses:"
 
 permissions:
-  contents: read       # Required so the action can read repo contents if needed
-  pull-requests: read
+  contents: read
+  pull-requests: write
   statuses: write
 
 jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      # -------------------------------------------------------------------
-      # Run the semantic PR check — now fails immediately if invalid
-      # -------------------------------------------------------------------
-      - name: Validate PR title/body against Conventional Commits
+      # Check out the PR's HEAD commit without running its workflows
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Validate Conventional Commits
         uses: amannn/action-semantic-pull-request@v5
         env:
           # GitHub automatically provides a GITHUB_TOKEN for each workflow run
