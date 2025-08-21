@@ -171,6 +171,54 @@ return [
     ['condition' => 'day in [mon..fri] AND is weekday', 'currentDays' => ['mon','tue','wed','thu','fri']],
     ['condition' => 'day in [sat..sun] OR day in [mon..tue]', 'currentDays' => ['mon','tue','sat','sun']],
 
+    // Basic OR forms
+    ['condition' => 'mon or tue',          'currentDays' => ['mon','tue']],
+    ['condition' => 'mon,tue',             'currentDays' => ['mon','tue']],
+    ['condition' => 'mon | tue',           'currentDays' => ['mon','tue']],
+    ['condition' => 'mon || tue',          'currentDays' => ['mon','tue']],
+    ['condition' => '  MON   Or   tUE  ',  'currentDays' => ['mon','tue']],
+
+    // AND forms
+    ['condition' => 'mon and tue',         'currentDays' => []],              // impossible
+    ['condition' => 'mon and mon',         'currentDays' => ['mon']],         // tautology to mon only
+
+    // Longer lists and mixed separators
+    ['condition' => 'mon or tue or wed',   'currentDays' => ['mon','tue','wed']],
+    ['condition' => 'mon, tue, wed',       'currentDays' => ['mon','tue','wed']],
+    ['condition' => 'mon or tue, wed',     'currentDays' => ['mon','tue','wed']],
+
+    // Grouping
+    ['condition' => '(mon and wed) or fri',              'currentDays' => ['fri']],
+    ['condition' => 'mon or (tue and weekend)',          'currentDays' => ['mon']],
+    ['condition' => '(mon or tue) and weekday',          'currentDays' => ['mon','tue']],
+    ['condition' => '(sat or sun) and weekend',          'currentDays' => ['sat','sun']],
+
+    // NOT usage
+    ['condition' => 'not mon',                           'currentDays' => ['tue','wed','thu','fri','sat','sun']],
+    ['condition' => 'not weekend',                       'currentDays' => ['mon','tue','wed','thu','fri']],
+    ['condition' => 'not (mon or tue)',                  'currentDays' => ['wed','thu','fri','sat','sun']],
+    ['condition' => 'not mon or tue',                    'currentDays' => ['tue','wed','thu','fri','sat','sun']], // NOT binds high, then OR
+    ['condition' => 'mon or not tue',                    'currentDays' => ['mon','wed','thu','fri','sat','sun']],
+    ['condition' => 'not mon and tue',                   'currentDays' => ['tue']], // (NOT mon) AND tue -> tue
+
+    // Precedence sanity (AND tighter than OR)
+    ['condition' => 'mon or tue and wed',                'currentDays' => ['mon']], // tue AND wed impossible -> mon only
+    ['condition' => 'mon and tue or wed',                'currentDays' => ['wed']], // mon AND tue impossible -> wed only
+
+    // Mixed with weekday/weekend tokens
+    ['condition' => 'weekday or sun',                    'currentDays' => ['mon','tue','wed','thu','fri','sun']],
+    ['condition' => 'weekday and tue',                   'currentDays' => ['tue']],
+    ['condition' => '(mon or tue) and weekend',          'currentDays' => []],
+    ['condition' => '(sat or sun) and weekday',          'currentDays' => []],
+    ['condition' => 'not weekday or mon',                'currentDays' => ['mon','sat','sun']],
+
+    // Spacing and punctuation robustness
+    ['condition' => 'mon ,  tue',                        'currentDays' => ['mon','tue']],
+    ['condition' => ' ( mon  OR   tue ) ',               'currentDays' => ['mon','tue']],
+
+    // Invalid token inside shorthand (should surface a clear error)
+    ['condition' => 'mon or pizza', 'failureMsg' => 'Invalid day name(s) in condition: pizza'],
+
     // Invalid tokens within a list
     ['condition' => 'day in [mon, tue, fuz]', 'failureMsg' => 'Invalid day name(s) in condition: fuz'],
     ['condition' => 'day in [thu, fri, sun..mon, foo]', 'failureMsg' => 'Invalid day name(s) in condition: foo'],
@@ -190,7 +238,6 @@ return [
 
     // More "Safety check failed" tests
     ['condition' => 'is fri',               'failureMsg' => "Safety check failed for processed condition 'is fri'"],
-    ['condition' => 'NOT mon',              'failureMsg' => "Safety check failed for processed condition '! mon'"],
     ['condition' => 'day + 1 == tue',       'failureMsg' => "Safety check failed for processed condition 'day + 1 == tue'"],
     ['condition' => 'day <= mon',           'failureMsg' => "Safety check failed for processed condition 'day <= mon'"],
     ['condition' => 'today <= tue',         'failureMsg' => "Safety check failed for processed condition 'today <= tue'"],
