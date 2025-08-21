@@ -110,4 +110,21 @@ class Ifday_Utils {
         }
         return $result;
     }
+
+    /** Map many aliases to a canonical lowercase day or special keyword */
+    public static function normalizeDayToken(string $s): ?string {
+        $k = strtolower(trim($s));
+        static $map = [
+            'mon' => 'monday', 'monday' => 'monday',
+            'tue' => 'tuesday', 'tues' => 'tuesday', 'tuesday' => 'tuesday',
+            'wed' => 'wednesday', 'weds' => 'wednesday', 'wednesday' => 'wednesday',
+            'thu' => 'thursday', 'thur' => 'thursday', 'thurs' => 'thursday', 'thursday' => 'thursday',
+            'fri' => 'friday', 'friday' => 'friday',
+            'sat' => 'saturday', 'saturday' => 'saturday',
+            'sun' => 'sunday', 'sunday' => 'sunday',
+            'weekday' => 'weekday',
+            'weekend' => 'weekend',
+        ];
+        return $map[$k] ?? null;
+    }
 }

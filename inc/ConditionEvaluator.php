@@ -44,6 +44,92 @@ class Ifday_ConditionEvaluator {
         return [true, p_render('xhtml', p_get_instructions($content), $info), null];
     }
 
+    /**
+     * Expand shorthand like "mon or tue", "mon,tue", "mon || tue",
+     * "(mon and wed) or fri", "not mon" into canonical form:
+     *   "(day is monday) OR (day is tuesday)" etc.
+     *
+     * Returns the expanded string, or null if this isn't a pure shorthand
+     * (i.e., it already uses 'day', 'today', '==', 'is', etc.).
+     * Unknown word-like tokens are marked with TOKEN_INVALID_DAY:<token>.
+     */
+    private function expandDayOnlySyntax(string $expr): ?string {
+        $s = trim($expr);
+        if ($s === '') return null;
+
+        // If it already looks canonical or relative, skip
+        if (preg_match('/(==|!=|<=|>=|<|>|\\bis\\b|\\bis\\s+not\\b|\\bday\\b|\\btoday\\b|\\btomorrow\\b|\\byesterday\\b)/i', $s)) {
+            return null;
+        }
+
+        // Use your existing maps so we don't depend on a new utils API
+        $abbr = Ifday_Utils::getDayAbbrMap();   // e.g. mon => monday
+        $full = Ifday_Utils::getDays();         // ['monday', ... 'sunday']
+
+        $parts = preg_split(
+            '/(\s+|,|\|\||\||&&|&|\(|\)|\bAND\b|\bOR\b|\bNOT\b)/i',
+            $s,
+            -1,
+            PREG_SPLIT_DELIM_CAPTURE | PREG_SPLIT_NO_EMPTY
+        );
+        if (!$parts) return null;
+
+        $out = [];
+        foreach ($parts as $raw) {
+            $tok = trim($raw);
+            if ($tok === '') continue;
+
+            // parentheses
+            if ($tok === '(' || $tok === ')') { $out[] = $tok; continue; }
+
+            // boolean glue
+            if (preg_match('/^(,|\|\||\||&&|&|AND|OR|NOT)$/i', $tok)) {
+                $map = [
+                    ',' => 'OR', '||' => 'OR', '|' => 'OR',
+                    '&&' => 'AND', '&' => 'AND',
+                    'AND' => 'AND', 'OR' => 'OR', 'NOT' => 'NOT'
+                ];
+                $up = strtoupper($tok);
+                $out[] = $map[$tok] ?? $map[$up] ?? $up;
+                continue;
+            }
+
+            // normalize potential day tokens
+            $k = strtolower($tok);
+
+            if ($k === 'weekday' || $k === 'workday' || $k === 'businessday') {
+                $out[] = '(weekday)'; // handled later to 1/0
+                continue;
+            }
+            if ($k === 'weekend') {
+                $out[] = '(weekend)'; // handled later to 1/0
+                continue;
+            }
+
+            // abbreviations and full names
+            if (isset($abbr[$k])) {
+                $out[] = '(day is ' . $abbr[$k] . ')';
+                continue;
+            }
+            if (in_array($k, $full, true)) {
+                $out[] = '(day is ' . $k . ')';
+                continue;
+            }
+
+            // Any other A–Z word is an invalid day; mark it so evaluateCondition() reports cleanly
+            if (preg_match('/^[A-Za-z]+$/', $tok)) {
+                $out[] = self::TOKEN_INVALID_DAY . ':' . $k;
+                continue;
+            }
+
+            // Unknown punctuation means it's not a clean shorthand; let the normal pipeline handle it
+            return null;
+        }
+
+        $expanded = preg_replace('/\s+/', ' ', trim(implode(' ', $out)));
+        return $expanded !== '' ? $expanded : null;
+    }
+
     private function normalizeBracketLists(string $expr): string {
         // 1) Tighten spaces around '[' and ']'
         $expr = preg_replace('/\[\s+/', '[', $expr);
@@ -81,7 +167,33 @@ class Ifday_ConditionEvaluator {
             $now = new DateTime();
         }
 
-        // The rest of the code remains the same as before
+        // Pre-check for lone identifiers and disallow *uppercase* NOT applied to a lone identifier.
+        // (lowercase 'not mon' is allowed and will be expanded by expandDayOnlySyntax)
+        $pre = trim(preg_replace('/\s+/', ' ', $cond));
+        $abbr = Ifday_Utils::getDayAbbrMap();
+        $days = Ifday_Utils::getDays();
+        $special = ['weekday','weekend','workday','businessday'];
+
+        // A single bare word in parens like "(tue)" should fail
+        if (preg_match('/^\(\s*[A-Za-z]+\s*\)$/', $pre)) {
+            return [false, "Safety check failed for processed condition '$pre'"];
+        }
+
+        // A single bare word:
+        if (preg_match('/^[A-Za-z]+$/', $pre)) {
+            $w = strtolower($pre);
+            // allow if it's a valid day/abbr/special token; otherwise fail fast (e.g., "funday")
+            if (!(isset($abbr[$w]) || in_array($w, $days, true) || in_array($w, $special, true))) {
+                return [false, "Safety check failed for processed condition '$pre'"];
+            }
+        }
+
+        // Expand "mon or tue" style shorthand before any other normalization
+        $maybeExpanded = $this->expandDayOnlySyntax($cond);
+        if ($maybeExpanded !== null) {
+            $cond = $maybeExpanded;
+        }
+
         $cond = trim(preg_replace('/\s+/', ' ', $cond));
         $cond = str_replace(['"', '\''], '', $cond);
 
