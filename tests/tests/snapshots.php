@@ -165,6 +165,7 @@ return [
         'date' => '2025-12-15', // Monday, week of 2025-12-15..12-21
         'name' => 'Week of December 15, 2025',
         'tests' => [
+            ['condition' => '1st monday',   'currentDays' => []],
             ['condition' => '3rd monday',   'currentDays' => ['mon']],
             ['condition' => '3rd mon',      'currentDays' => ['mon']],
         ]

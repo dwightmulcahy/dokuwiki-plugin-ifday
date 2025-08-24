@@ -161,9 +161,9 @@ class Ifday_ConditionEvaluator {
         // 2) Inside any single [...] segment, normalize "a .. b" -> "a..b", and "a , b" -> "a,b"
         //    This keeps commas and '..' semantics but ignores user spacing.
         $expr = preg_replace_callback('/\[[^\[\]]*\]/', function ($m) {
-            $inner = substr($m[0], 1, -1);              // strip brackets
-            $inner = preg_replace('/\s*\.\.\s*/', '..', $inner); // spaces around '..'
-            $inner = preg_replace('/\s*,\s*/', ',', $inner);     // spaces around ','
+            $inner = substr($m[0], 1, -1);
+            $inner = preg_replace('/\s*\.\.\s*/', '..', $inner);
+            $inner = preg_replace('/\s*,\s*/', ',', $inner);
             $inner = trim($inner);
             return '[' . $inner . ']';
         }, $expr);
@@ -200,6 +200,9 @@ class Ifday_ConditionEvaluator {
         // Anchor prefers the environment date when provided
         $nowAnchor = $envStr ? new DateTime($envStr) : $nowDay;
 
+        // Early collapse ordinal phrases, so expressions like "1st friday" become 1/0
+        $cond = $this->processOrdinalWeekdayOfMonth($cond, $nowDay);
+
         // Pre-check for lone identifiers and disallow *uppercase* NOT applied to a lone identifier.
         // (lowercase 'not mon' is allowed and will be expanded by expandDayOnlySyntax)
         $pre = trim(preg_replace('/\s+/', ' ', $cond));
@@ -207,9 +210,12 @@ class Ifday_ConditionEvaluator {
         $days = Ifday_Utils::getDays();
         $special = ['weekday','weekend','workday','businessday'];
 
-        // A single bare word in parens like "(tue)" should fail
-        if (preg_match('/^\(\s*[A-Za-z]+\s*\)$/', $pre)) {
-            return [false, "Safety check failed for processed condition '$pre'"];
+        // A single bare word in parens like "(tue)" should fail, but allow special tokens
+        if (preg_match('/^\(\s*([A-Za-z]+)\s*\)$/', $pre, $mm)) {
+            $w = strtolower($mm[1]);
+            if (!in_array($w, $special, true)) {
+                return [false, "Safety check failed for processed condition '$pre'"];
+            }
         }
 
         // A single bare word:
@@ -228,7 +234,7 @@ class Ifday_ConditionEvaluator {
         }
 
         $cond = trim(preg_replace('/\s+/', ' ', $cond));
-        $cond = str_replace(['"', '\''], '', $cond);
+        $cond = str_replace(['"', "'"], '', $cond);
         $cond = $this->normalizeBracketLists($cond);
 
         // 2) Resolve "2nd monday", "last friday", etc. to 1/0  (per-row clock)
@@ -280,15 +286,18 @@ class Ifday_ConditionEvaluator {
         $dayMap = Ifday_Utils::getDayAbbrMap();
         $days = Ifday_Utils::getDays();
 
-        if (in_array($lowerCond, $days, true) || isset($dayMap[$lowerCond])) {
+        if (isset($dayMap[$lowerCond])) {
+            return 'day == ' . $dayMap[$lowerCond];
+        }
+        if (in_array($lowerCond, $days, true)) {
             return 'day == ' . $lowerCond;
         }
         return $cond;
     }
 
     private function processOrdinalWeekdayOfMonth(string $cond, DateTime $now): string {
-        $dayMap = Ifday_Utils::getDayAbbrMap();  // mon->monday, ...
-        $days   = Ifday_Utils::getDays();        // ['monday',..., 'sunday']
+        $dayMap = Ifday_Utils::getDayAbbrMap();
+        $days   = Ifday_Utils::getDays();
 
         // Helper: full day -> ISO-8601 index (Mon=1..Sun=7)
         $dayIndex = function(string $fullDay): ?int {
@@ -304,9 +313,9 @@ class Ifday_ConditionEvaluator {
             $y = (int)$base->format('Y');
             $m = (int)$base->format('n');
             $first = (clone $base)->setDate($y, $m, 1);
-            $firstIso = (int)$first->format('N');            // Mon=1..Sun=7
+            $firstIso = (int)$first->format('N');
             $delta = ($isoDow - $firstIso + 7) % 7;
-            $firstHit = 1 + $delta;                           // first target weekday in month
+            $firstHit = 1 + $delta;
             $dom = $firstHit + 7 * ($n - 1);
             $daysInMonth = (int)$first->format('t');
             return ($dom >= 1 && $dom <= $daysInMonth) ? $dom : null;
@@ -370,10 +379,10 @@ class Ifday_ConditionEvaluator {
                 $neg = !empty($m[2]);
                 $op  = $m[3] ?: '==';
                 $val = $evalPhrase($m[4]);
-                if ($val === null) return $m[0];          // not our pattern; leave untouched
-                if (str_starts_with($val, self::TOKEN_INVALID_DAY)) return $val;
+                if ($val === null) return $m[0];
+                if (strpos($val, Ifday_ConditionEvaluator::TOKEN_INVALID_DAY) === 0) return $val;
                 $bool = ($val === '1');
-                $res  = ($op === '==') ? $bool : !$bool;   // today == phrase  → bool ; today != phrase → !bool
+                $res  = ($op === '==') ? $bool : !$bool;
                 return ($neg ? !$res : $res) ? '1' : '0';
             },
             $cond
@@ -389,8 +398,8 @@ class Ifday_ConditionEvaluator {
                 // extract the phrase without 'not '
                 $phrase = preg_replace('/^\s*not\s+/i', '', $full);
                 $val = $evalPhrase($phrase);
-                if ($val === null) return $m[0];                // not our pattern
-                if (str_starts_with($val, Ifday_ConditionEvaluator::TOKEN_INVALID_DAY)) return $val;
+                if ($val === null) return $m[0];
+                if (strpos($val, Ifday_ConditionEvaluator::TOKEN_INVALID_DAY) === 0) return $val;
                 $bool = ($val === '1');
                 return ($hasNot ? !$bool : $bool) ? '1' : '0';
             },
@@ -403,8 +412,8 @@ class Ifday_ConditionEvaluator {
     private function processDayComparisons(string $cond, DateTime $now, ?DateTime $anchor = null): string {
         $anchor = $anchor ?? $now;
 
-        $dayNameNow = strtolower($now->format('l'));          // per-row clock
-        $dayNameAnchor = strtolower($anchor->format('l'));    // anchored clock
+        $dayNameNow = strtolower($now->format('l'));
+        $dayNameAnchor = strtolower($anchor->format('l'));
 
         $dayMap = Ifday_Utils::getDayAbbrMap();
         $days = Ifday_Utils::getDays();
@@ -428,7 +437,7 @@ class Ifday_ConditionEvaluator {
             }, $cond
         );
 
-        // day±N ==/!= <day> or bare "day±N" (per-row)
+        // day±N with optional comparison (per-row)
         $cond = preg_replace_callback(
             '/\bday\s*([+-]\d+)(?:\s*([!=]=)\s*([a-z]+))?\b/i',
             function($m) use ($now, $dayMap, $days) {
@@ -436,7 +445,10 @@ class Ifday_ConditionEvaluator {
                 $op = $m[2] ?? '==';
                 $targetDay = strtolower((clone $now)->modify(($offset >= 0 ? '+' : '') . $offset . ' days')->format('l'));
 
-                if (count($m) > 2) { // Full comparison
+                $hasOp  = isset($m[2]) && $m[2] !== '';
+                $hasRhs = isset($m[3]) && $m[3] !== '';
+                if ($hasOp && $hasRhs) {
+                    $op  = $m[2];
                     $rhs = strtolower($m[3]);
                     $rhs = $dayMap[$rhs] ?? $rhs;
                     if (!in_array($rhs, $days, true)) return self::TOKEN_INVALID_DAY . ':' . $rhs;
@@ -513,7 +525,10 @@ class Ifday_ConditionEvaluator {
                         if ($start === '' || $end === '') return self::TOKEN_INCOMPLETE_RANGE;
                         $rangeDays = Ifday_Utils::expandDayRange($start, $end);
                         if ($rangeDays === null) {
-                            $invalidToken = (in_array($start, array_keys($dayMap)) || in_array($start, $days)) ? $end : $start;
+                            $fullStart = $dayMap[$start] ?? $start;
+                            $fullEnd   = $dayMap[$end] ?? $end;
+                            $invalidToken = (!in_array($fullStart, $days, true)) ? $start :
+                                            ((!in_array($fullEnd, $days, true)) ? $end : $start);
                             return self::TOKEN_INVALID_DAY . ':' . $invalidToken;
                         }
                         $targets = array_merge($targets, $rangeDays);
@@ -574,9 +589,16 @@ class Ifday_ConditionEvaluator {
                         if ($start === '' || $end === '') return self::TOKEN_INCOMPLETE_RANGE;
                         $rangeMonths = Ifday_Utils::expandMonthRange($start, $end);
                         if ($rangeMonths === null) {
-                            $invalidToken = (!isset($monthMap[$start]) && !ctype_digit($start)) ? $start : $end;
-                            return self::TOKEN_INVALID_MONTH . ':' . $invalidToken;
+                            $bad = [];
+                            if (!isset($monthMap[$start]) && !ctype_digit($start)) {
+                                $bad[] = $start;
+                            }
+                            if (!isset($monthMap[$end]) && !ctype_digit($end)) {
+                                $bad[] = $end;
+                            }
+                            return self::TOKEN_INVALID_MONTH . ':' . implode(', ', $bad);
                         }
+
                         $targets = array_merge($targets, $rangeMonths);
                     } else {
                         if (ctype_digit($it)) {
