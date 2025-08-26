@@ -14,37 +14,18 @@ jobs:
 
     env:
       INCLUDE_FILES: |
-        plugin.info.txt
-        README.md
-        LICENSE
-        action.php
-        admin.php
-        helper.php
-        helper_*.php
-        metadata.php
-        metadata_*.php
-        install.php
-        meta.php
-        syntax.php
+        inc/
         conf/
-        lang/
-        doc/
-        tpl/
-        styles.css
-        script.js
-        config/
-        tests/
+        LICENSE
+        plugin.info.txt
+        syntax.php
+        README.md
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Show current working directory
-        run: |
-          pwd
-          ls -la
 
       - name: Extract plugin name from repo name
         id: extract_plugin_name
@@ -57,83 +38,108 @@ jobs:
             plugin_name="$repo"
           fi
           echo "PLUGIN_NAME=$plugin_name" >> "$GITHUB_ENV"
-          echo "TAG_NAME=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"         # e.g. v1.2.3
-          echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"        # e.g. 1.2.3
+          echo "TAG_NAME=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
+          echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
 
       - name: Install git-cliff
         run: |
-          set -euo pipefail
           curl -sSL https://github.com/orhun/git-cliff/releases/download/v2.10.0/git-cliff-2.10.0-x86_64-unknown-linux-gnu.tar.gz | tar -xz
           sudo mv git-cliff-2.10.0/git-cliff /usr/local/bin/git-cliff
           git-cliff --version
 
-      - name: Generate CHANGELOG.md from commits
+      - name: Generate CHANGELOG.md
+        run: |
+          if [[ -f cliff.toml ]]; then
+            git-cliff --config cliff.toml -o CHANGELOG.md
+          else
+            cat >/tmp/_cliff.toml <<-'EOF'
+          [changelog]
+          header = "# Changelog"
+          trim = true
+          [git]
+          conventional_commits = true
+          filter_commits = true
+          tag_pattern = "v[0-9].*"
+          topo_order = false
+          EOF
+            git-cliff --config /tmp/_cliff.toml -o CHANGELOG.md
+          fi
+
+      - name: Verify plugin.info.txt exists
+        run: |
+          if [[ ! -f plugin.info.txt ]]; then
+            echo "::error title=Missing plugin.info.txt::plugin.info.txt is required at repo root."
+            exit 1
+          fi
+
+      - name: Build release ZIP
         run: |
           set -euo pipefail
-          ls
-          git-cliff --config cliff.toml -o CHANGELOG.md
-
-      - name: Build release ZIP with correct top-level folder
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-
           STAGE="build/stage"
           OUTDIR="build"
           mkdir -p "$STAGE" "$OUTDIR"
-
-          # Stage under PLUGIN_NAME/ so the zip root is correct
+          
           DEST="$STAGE/${PLUGIN_NAME}"
           rm -rf "$DEST"
           mkdir -p "$DEST"
-
-          # Add included files and directories if present
+          
           while IFS= read -r item; do
-            [[ -z "$item" ]] && continue
-            found=0
-            for path in $item; do
-              if [[ -e "$path" ]]; then
-                found=1
-                echo "Adding $path"
-                rsync -a "$path" "$DEST"/
-              fi
-            done
-            if [[ $found -eq 0 ]]; then
+            # skip blank lines
+            [[ -z "${item// }" ]] && continue
+          
+            # normalize: remove trailing slash so rsync copies the directory itself
+            src="${item%/}"
+          
+            if [[ -e "$src" ]]; then
+              echo "Adding $src"
+              rsync -a "$src" "$DEST"/
+            else
               echo "Skipping missing $item"
             fi
           done <<< "${INCLUDE_FILES}"
-
-          # Normalize plugin.info.txt in the staged copy only
+          
+          echo "Staged tree:"
+          find "$DEST" -maxdepth 2 -print | sed "s|$DEST|.|"
+          
+          # Normalize plugin.info.txt date
           if [[ -f "$DEST/plugin.info.txt" ]]; then
             today=$(TZ=America/Chicago date +'%Y-%m-%d')
-
-            # strip UTF-8 BOM if present, then ensure "date<TAB>YYYY-MM-DD"
             tmp="$DEST/plugin.info.txt.tmp"
             { sed '1s/^\xEF\xBB\xBF//' "$DEST/plugin.info.txt" || cat "$DEST/plugin.info.txt"; } > "$tmp"
-
-            awk -v today="$today" 'BEGIN{FS="[ \t]+"; OFS="\t"}
-              /^date([ \t]|$)/ { print "date", today; next }
-              { print }
+            awk -v today="$today" '
+              BEGIN { OFS="\t" }
+              /^[[:space:]]*date([[:space:]]|$)/ { print "date", today; next }
+              { print $0 }
             ' "$tmp" > "$DEST/plugin.info.txt"
-
             rm -f "$tmp"
-            { printf '%s\n' '--- plugin.info.txt ---' && cat -A "$DEST/plugin.info.txt"; }
-          else
-            echo "Warning: $DEST/plugin.info.txt not found; skipping date normalization"
           fi
-
-          # Create versioned zip using the exact tag (includes the leading v)
+          
           ZIP_FILE="${OUTDIR}/${PLUGIN_NAME}-${TAG_NAME}.zip"
           rm -f "$ZIP_FILE"
           (cd "$STAGE" && zip -r -q "../${PLUGIN_NAME}-${TAG_NAME}.zip" "${PLUGIN_NAME}")
-
-          # Copy changelog alongside
+          
           cp CHANGELOG.md "$OUTDIR"/
-
-          echo "Created $ZIP_FILE"
+          (cd "$OUTDIR" && sha256sum "${PLUGIN_NAME}-${TAG_NAME}.zip" > "${PLUGIN_NAME}-${TAG_NAME}.zip.sha256")
+          
           echo "ZIP_FILE=$ZIP_FILE" >> "$GITHUB_ENV"
 
-      - name: Create GitHub Release and upload assets
+      - name: Verify ZIP directory structure
+        run: |
+          set -euo pipefail
+          echo "Verifying contents of $ZIP_FILE..."
+          unzip -l "$ZIP_FILE"
+
+          echo "Checking required directories and files..."
+          unzip -l "$ZIP_FILE" | grep -q "${PLUGIN_NAME}/inc/"      || { echo "::error::Missing inc/ directory"; exit 1; }
+          unzip -l "$ZIP_FILE" | grep -q "${PLUGIN_NAME}/conf/"     || { echo "::error::Missing conf/ directory"; exit 1; }
+          unzip -l "$ZIP_FILE" | grep -q "${PLUGIN_NAME}/plugin.info.txt" || { echo "::error::Missing plugin.info.txt"; exit 1; }
+          unzip -l "$ZIP_FILE" | grep -q "${PLUGIN_NAME}/syntax.php"      || { echo "::error::Missing syntax.php"; exit 1; }
+          unzip -l "$ZIP_FILE" | grep -q "${PLUGIN_NAME}/README.md"       || { echo "::error::Missing README.md"; exit 1; }
+          unzip -l "$ZIP_FILE" | grep -q "${PLUGIN_NAME}/LICENSE"         || { echo "::error::Missing LICENSE"; exit 1; }
+
+          echo "ZIP structure verified successfully!"
+
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.TAG_NAME }}
@@ -141,6 +147,8 @@ jobs:
           body_path: build/CHANGELOG.md
           files: |
             ${{ env.ZIP_FILE }}
+            ${{ env.ZIP_FILE }}.sha256
             build/CHANGELOG.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
