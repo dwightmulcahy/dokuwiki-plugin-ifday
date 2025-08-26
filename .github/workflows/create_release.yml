@@ -50,8 +50,10 @@ jobs:
       - name: Generate CHANGELOG.md
         run: |
           if [[ -f cliff.toml ]]; then
-            git-cliff --config cliff.toml -o CHANGELOG.md
+            echo "Generating changelog for ${TAG_NAME}"
+            git-cliff --config cliff.toml --tag "${TAG_NAME}" -o CHANGELOG.md
           else
+            echo "Generating changelog for ${TAG_NAME} with fallback config"
             cat >/tmp/_cliff.toml <<-'EOF'
           [changelog]
           header = "# Changelog"
@@ -62,7 +64,7 @@ jobs:
           tag_pattern = "v[0-9].*"
           topo_order = false
           EOF
-            git-cliff --config /tmp/_cliff.toml -o CHANGELOG.md
+            git-cliff --config /tmp/_cliff.toml --tag "${TAG_NAME}" -o CHANGELOG.md
           fi
 
       - name: Verify plugin.info.txt exists
