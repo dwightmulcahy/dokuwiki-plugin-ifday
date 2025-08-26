@@ -6,6 +6,38 @@ if (!defined('DOKU_INC')) die();
 class Ifday_Utils {
 
     /**
+     * Get current DateTime in DokuWiki's timezone,
+     * falling back to PHP default if none is configured.
+     */
+    public static function now(array $conf): DateTime {
+        $tzName = !empty($conf['timezone']) ? $conf['timezone'] : (date_default_timezone_get() ?: 'UTC');
+        $tz = self::safeTz($tzName);
+        return new DateTime('now', $tz);
+    }
+
+    public static function safeTz(string $name): DateTimeZone {
+        try {
+            return new DateTimeZone($name);
+        } catch (\Throwable $e) {                 // catches DateInvalidTimeZoneException on PHP 8.4+
+            $fallback = date_default_timezone_get() ?: 'UTC';
+            try {
+                return new DateTimeZone($fallback);
+            } catch (\Throwable $e2) {
+                return new DateTimeZone('UTC');   // last resort
+            }
+        }
+    }
+
+    public static function safeDateTime(?string $str, DateTimeZone $tz): DateTime {
+        try {
+            return new DateTime($str ?? 'now', $tz);
+        } catch (\Throwable $e) {
+            return new DateTime('now', $tz);
+        }
+    }
+
+
+    /**
      * @return array Map of day abbreviations to full names.
      */
     public static function getDayAbbrMap(): array {

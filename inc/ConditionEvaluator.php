@@ -177,7 +177,7 @@ class Ifday_ConditionEvaluator {
      * @param string $cond The boolean condition string.
      * @return array [bool success, string|bool result]
      */
-    private function evaluateCondition(string $cond, ?DateTime $testDate = null): array {
+    public function evaluateCondition(string $cond, ?DateTime $testDate = null): array {
         // We use two "clocks":
         //  - $nowDay:    per-row date (varies across the truth table week)
         //  - $nowAnchor: snapshot base date from IFDAY_TEST_DATE if present;
@@ -187,17 +187,21 @@ class Ifday_ConditionEvaluator {
         // “is weekday/weekend” anchored to the snapshot date, while
         // day/today/tomorrow/yesterday/ordinals vary per row.
 
+        global $conf;
         $envStr = getenv('IFDAY_TEST_DATE') ?: null;
 
         if ($testDate !== null) {
             $nowDay = $testDate;
         } elseif ($envStr) {
-            $nowDay = new DateTime($envStr);
+            $tzName = !empty($conf['timezone']) ? $conf['timezone'] : (date_default_timezone_get() ?: 'UTC');
+            $tz = Ifday_Utils::safeTz($tzName);
+            $nowDay = new DateTime($envStr, $tz);
+            echo $tz->getName() . " : " . $nowDay->format('Y-m-d H:i:s') . "\n";
         } else {
-            $nowDay = new DateTime();
+            $nowDay = Ifday_Utils::now($conf);
         }
 
-        // Anchor prefers the environment date when provided
+
         $nowAnchor = $envStr ? new DateTime($envStr) : $nowDay;
 
         // Early collapse ordinal phrases, so expressions like "1st friday" become 1/0
