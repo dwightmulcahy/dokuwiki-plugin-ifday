@@ -4,7 +4,15 @@ Here’s your `README.md` with **only additions**: new feature sections and extr
 
 # ifday Plugin for DokuWiki
 
+[![License](https://img.shields.io/github/license/dwightmulcahy/dokuwiki-plugin-ifday?style=flat-square)](LICENSE)
+[![DokuWiki](https://img.shields.io/badge/DokuWiki-compatible-blue?style=flat-square)](https://www.dokuwiki.org/)
 [![PR Check](https://github.com/dwightmulcahy/dokuwiki-plugin-ifday/actions/workflows/pr-check.yml/badge.svg)](https://github.com/dwightmulcahy/dokuwiki-plugin-ifday/actions/workflows/pr-check.yml)
+<br>
+[![Latest Release](https://img.shields.io/github/v/release/dwightmulcahy/dokuwiki-plugin-ifday?style=flat-square)](https://github.com/dwightmulcahy/dokuwiki-plugin-ifday/releases)
+[![GitHub commits](https://badgen.net/github/commits/dwightmulcahy/dokuwiki-plugin-ifday/main)](https://github.com/dwightmulcahy/dokuwiki-plugin-ifday/commits/main)
+[![Issues](https://img.shields.io/github/issues/dwightmulcahy/dokuwiki-plugin-ifday?style=flat-square)](https://github.com/dwightmulcahy/dokuwiki-plugin-ifday/issues)
+[![Pull Requests](https://img.shields.io/github/issues-pr/dwightmulcahy/dokuwiki-plugin-ifday?style=flat-square)](https://github.com/dwightmulcahy/dokuwiki-plugin-ifday/pulls)
+
 
 ## Description
 
