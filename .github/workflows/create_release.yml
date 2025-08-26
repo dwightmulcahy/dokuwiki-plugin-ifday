@@ -41,6 +41,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Show current working directory
+        run: |
+          pwd
+          ls -la
+
       - name: Extract plugin name from repo name
         id: extract_plugin_name
         run: |
