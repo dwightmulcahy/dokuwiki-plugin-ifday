@@ -1,7 +1,3 @@
-Here’s your `README.md` with **only additions**: new feature sections and extra examples sprinkled throughout—your original wording remains untouched.
-
----
-
 # ifday Plugin for DokuWiki
 
 [![License](https://img.shields.io/github/license/dwightmulcahy/dokuwiki-plugin-ifday?style=flat-square)](LICENSE)
